@@ -1,0 +1,12 @@
+streamlit
+pillow
+moviepy
+yt-dlp
+requests
+beautifulsoup4
+opencv-python-headless
+numpy
+decorator
+proglog
+imageio
+imageio-ffmpeg
