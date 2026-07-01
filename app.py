@@ -4,6 +4,7 @@ import json
 import time
 import requests
 import threading
+from datetime import datetime, timedelta
 import streamlit as st
 from bs4 import BeautifulSoup
 from cv2 import blur
@@ -57,31 +58,24 @@ def process_image_template(image_path, blur_background=False, remove_bg_placehol
     img = Image.open(image_path).convert("RGBA")
     w, h = img.size
     
-    # ميزة عزل الخلفية (Blur احترافي للمنتج)
     if blur_background:
-        # بنعمل تأثير عزل خفيف للخلفية الكلية مع الحفاظ على تفاصيل شياكة المنتج
         blurred_img = img.filter(ImageFilter.GaussianBlur(radius=8))
-        # دمج المنتج الأصلي في المنتصف بشكل بارز
         mask = Image.new("L", (w, h), 0)
         draw = ImageDraw.Draw(mask)
         draw.ellipse((w*0.1, h*0.1, w*0.9, h*0.9), fill=255)
         mask = mask.filter(ImageFilter.GaussianBlur(radius=15))
         img = Image.composite(img, blurred_img, mask)
 
-    # وضع رقع تمويه وضبابية لطمس وتغطية أي لوجو قديم أو هاشتاجات في الزوايا
     draw = ImageDraw.Draw(img)
-    # زاوية يمين فوق ويمين تحت (أماكن لوجوهات التيك توك وقنوات التليجرام)
     draw.rectangle([w-120, 0, w, 60], fill=(20, 20, 24, 220))
     draw.rectangle([0, h-60, 150, h], fill=(20, 20, 24, 220))
 
-    # دمج اللوجو المعتمد logo.png
     logo_p = "logo.png"
     if os.path.exists(logo_p):
         logo = Image.open(logo_p).convert("RGBA")
         logo.thumbnail((int(w*0.25), int(h*0.15)))
         img.paste(logo, (w - logo.size[0] - 15, 15), logo)
         
-    # كتابة غلاف الشفافية النصي للبراند أسفل الصورة
     try:
         draw.text((20, h - 40), "مـنتــجـك - Montgk", fill=(255, 255, 255, 180))
     except: pass
@@ -176,7 +170,6 @@ with st.sidebar:
         ("20 ثانية (أسرع رندرة للـ Reels)", "30 ثانية (مثالي للشورتس)", "60 ثانية (دقيقة كاملة)", "الفيديو كامل (حد أقصى 5 دقائق)")
     )
     
-    # ميزة تركيب الصوت الحصري
     custom_audio_track = "my_luxury_brand_track.wav"
     use_custom_audio = st.checkbox(f"دمج تراك الصوت الحصري ({custom_audio_track})", value=True)
     
@@ -195,7 +188,7 @@ with st.sidebar:
 
 tab1, tab2, tab3 = st.tabs(["🎬 تشفير ومونتاج الفيديو", "🖼️ قالب ألبومات وصور المنتجات", "🛰️ رادار القنوات والـ Forward"])
 
-# ==================== التبويب الأول: تشفير ومونتاج الفيديو وحذف العلامات وصوتك ====================
+# ==================== التبويب الأول ====================
 with tab1:
     st.subheader("🚀 منصة هندسة وبصمة الفيديو وحذف اللوجوهات القديمة")
     option = st.radio("اختر طريقة إدخال مقطع الفيديو:", ("لصق رابط فيديو (يوتيوب، فيسبوك، تيك توك)", "رفع ملف فيديو مباشر من جهازك"), key="vid_option")
@@ -234,19 +227,16 @@ with tab1:
                 else:
                     if clip.duration > 300: clip = clip.subclip(0, 300)
                 
-                # إخفاء وتعمية علامات المنصات القديمة عبر اقتصاص ميكروسكوبي حواف وألوان
                 modified_clip = clip.fx(vfx.mirror_x)
-                modified_clip = modified_clip.fx(vfx.crop, x1=5, y1=5, x2=clip.w-5, y2=clip.h-5) # قص الأطراف لمنع قفش اللوجو القديم
+                modified_clip = modified_clip.fx(vfx.crop, x1=5, y1=5, x2=clip.w-5, y2=clip.h-5)
                 modified_clip = modified_clip.fx(vfx.colorx, 1.05)
                 
-                # دمج تراك الصوت الحصري الخاص بك المعتمد بالفولدر وتمزيق الصوت القديم
                 if use_custom_audio and os.path.exists(custom_audio_track):
                     audio_overlay = AudioFileClip(custom_audio_track).subclip(0, modified_clip.duration)
                     modified_clip = modified_clip.set_audio(audio_overlay)
                 else:
-                    modified_clip = modified_clip.fx(vfx.speedx, 1.03) # كسر البصمة لو لم يتوفر التراك
+                    modified_clip = modified_clip.fx(vfx.speedx, 1.03)
                 
-                # تثبيت الإطار واللوجو logo.png
                 if os.path.exists(logo_path):
                     logo = (ImageClip(logo_path).set_duration(modified_clip.duration).resize(height=55).margin(right=15, top=15, opacity=0).set_pos(("right", "top")).set_opacity(0.8))
                     final_clip = CompositeVideoClip([modified_clip, logo])
@@ -262,14 +252,13 @@ with tab1:
                     st.download_button(label="📥 تحميل الفيديو النهائي بصوتك الحصري", data=file, file_name="Montgk_Secure_Vid.mp4", mime="video/mp4")
             except Exception as e: st.error(f"حدث خطأ: {str(e)}")
 
-# ==================== التبويب الثاني: أسطمبة صور المنتجات والالبومات والفيديو المجمع ====================
+# ==================== التبويب الثاني ====================
 with tab2:
     st.subheader("🖼️ مصنع تجميل صور المنتجات والأسطمبات الفورية لـ Montgk")
     uploaded_images = st.file_uploader("ارفع صورة أو مجموعة صور للمنتجات هنا ع الماشي:", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
     
     if uploaded_images:
         if len(uploaded_images) > 1:
-            # السؤال الذكي المخصص لطلبك اللولبي! 🔥
             album_choice = st.radio("⚡ لقطنا مجموعة صور! قولي يا معلمي عايز تطلعهم إزاي؟", 
                                     ("📥 ألبوم تجميعه صور مفرودة (جاهزة للتحميل كـ صور منفصلة بالأسطمبة)", "🎬 دمجهم فيديو متحرك (Slideshow) بصوتك الحصري"))
         else:
@@ -281,11 +270,9 @@ with tab2:
                 temp_p = f"temp_product_{i}.png"
                 with open(temp_p, "wb") as f: f.write(img_file.read())
                 
-                # لو معلم على خيار الحذف الكلي يسأله السيرفر وينبهه
                 if remove_bg_ask:
                     st.warning("🔄 جاري عزل الخلفية بالكامل وتفريغ المنتج...")
                 
-                # تشغيل الأسطمبة ومسح اللوجوهات القديمة
                 processed_p = process_image_template(temp_p, blur_background=blur_bg_opt)
                 saved_paths.append(processed_p)
                 if os.path.exists(temp_p): os.remove(temp_p)
@@ -297,7 +284,6 @@ with tab2:
                     with open(p, "rb") as file:
                         st.download_button(label=f"📥 تحميل صورة المنتج {idx+1} الفاخرة", data=file, file_name=f"Montgk_Product_{idx+1}.png", mime="image/png")
             else:
-                # صناعة فيديو متحرك تلقائي من الصور المرفوعة
                 with st.spinner("🎬 جاري نسج الصور في مقطع فيديو شورتس مدمج بالصوت..."):
                     try:
                         img_clips = [ImageClip(p).set_duration(3) for p in saved_paths]
@@ -310,7 +296,7 @@ with tab2:
                         st.video(video_slideshow_path)
                     except Exception as e: st.error(f"عطل في بناء فيديو الصور: {str(e)}")
 
-# ==================== التبويب الثالث: سيستم رادار القنوات والـ Forward والأسعار ====================
+# ==================== التبويب الثالث: الفلتر الزمني الفولاذي المحدث ====================
 with tab3:
     st.subheader("🛰️ مركز الفحص والـ Forward وإعادة التسعير التلقائي")
     col1, col2 = st.columns(2)
@@ -319,13 +305,22 @@ with tab3:
     fb_profile_link = st.text_input("رابط صفحة الفيسبوك الخاصة بك للتواصل (FB Link):", value="https://www.facebook.com/montgk1", key="fb_l_9")
     
     st.write("---")
-    radar_mode = st.radio("اختر مصدر فحص المحتوى الحركي والمكتوب:", ("🛰️ سحب رادار حي وفوري من القنوات المراقبة", "📋 إدخال يدوي لبوست معموله Forward لسرعة الإنجاز"), key="mode_9")
+    
+    # 🌟 إضافة الفلتر التأكيدي للتاريخ بناءً على طلبك
+    date_filter = st.radio(
+        "📅 اختر تاريخ البوستات لتأكيد الفحص وقنص الداتا الحية:",
+        ("اليوم", "الأمس", "قبل أمس"),
+        index=0,
+        horizontal=True
+    )
+    
+    radar_mode = st.radio("اختر مصدر فحص المحتوى الحركي والمكتبوب:", ("🛰️ سحب رادار حي وفوري من القنوات المراقبة", "📋 إدخال يدوي لبوست معموله Forward لسرعة الإنجاز"), key="mode_9")
     post_text_to_process, image_to_show, trigger_process = "", None, False
 
     if radar_mode == "🛰️ سحب رادار حي وفوري من القنوات المراقبة":
         target_channel_input = st.selectbox("اختر القناة لالتقاط آخر منتج نزل فيها:", current_channels)
         if st.button("🛰️ أطلق الرادار واقنص المحتوى"):
-            with st.spinner("جاري قنص الداتا..."):
+            with st.spinner("جاري قنص الداتا وتصفية التواريخ..."):
                 try:
                     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
                     res = requests.get(f"https://t.me/s/{target_channel_input}", headers=headers, timeout=10)
@@ -333,11 +328,36 @@ with tab3:
                         soup = BeautifulSoup(res.content, "html.parser")
                         messages = soup.find_all("div", {"class": "tgme_widget_message_wrap"})
                         if messages:
-                            latest_valid_msg = next((msg for msg in reversed(messages) if msg.find("div", {"class": "tgme_widget_message_text"})), None)
-                            if latest_valid_msg:
-                                post_text_to_process = latest_valid_msg.find("div", {"class": "tgme_widget_message_text"}).text.strip()
+                            # فلترة البوستات لمطابقة التاريخ المختار
+                            found_post = None
+                            for msg in reversed(messages):
+                                text_div = msg.find("div", {"class": "tgme_widget_message_text"})
+                                time_tag = msg.find("time", {"class": "time"})
+                                
+                                if text_div and time_tag:
+                                    # قراءة تاريخ البوست الفعلي من تليجرام
+                                    post_time_str = time_tag.get("datetime", "") # Format: 2026-07-01T03:03:00+00:00
+                                    if post_time_str:
+                                        post_date = post_time_str.split("T")[0]
+                                        
+                                        # حساب تاريخ المقارنة بناءً على اختيار المايسترو
+                                        today_date = datetime.utcnow().strftime("%Y-%m-%d")
+                                        yesterday_date = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
+                                        before_yesterday_date = (datetime.utcnow() - timedelta(days=2)).strftime("%Y-%m-%d")
+                                        
+                                        target_date_str = today_date
+                                        if date_filter == "الأمس": target_date_str = yesterday_date
+                                        elif date_filter == "قبل أمس": target_date_str = before_yesterday_date
+                                        
+                                        # التطابق الفولاذي
+                                        if post_date == target_date_str:
+                                            found_post = msg
+                                            break
+                            
+                            if found_post:
+                                post_text_to_process = found_post.find("div", {"class": "tgme_widget_message_text"}).text.strip()
                                 photo_url = None
-                                photo_tag = latest_valid_msg.find("a", {"class": "tgme_widget_message_photo_wrap"})
+                                photo_tag = found_post.find("a", {"class": "tgme_widget_message_photo_wrap"})
                                 if photo_tag:
                                     style = photo_tag.get("style", "")
                                     match = re.search(r"url\(['\"]?(.*?)['\"]?\)", style)
@@ -346,6 +366,8 @@ with tab3:
                                     if photo_url.startswith('//'): photo_url = 'https:' + photo_url
                                     image_to_show = photo_url
                                 trigger_process = True
+                            else:
+                                st.warning(f"📭 مالقيتش أي بوستات منشورة بتاريخ ({date_filter}) في القناة دي يا كبير!")
                 except Exception as e: st.error(f"خطأ: {str(e)}")
     else:
         forwarded_text = st.text_area("الزق نص البوست الـ Forward هنا بالأسعار القديمة:", key="for_text_9")
