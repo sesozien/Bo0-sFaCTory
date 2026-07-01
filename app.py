@@ -40,9 +40,9 @@ st.markdown("""
 
 st.markdown("""
     <div class="web-banner">
-        <div class="banner-title">🥷 Mr:- Bo0</div>
-        <div class="banner-subtitle">🎬 MOntgk - مــنتــجـك</div>
-        <div class="banner-footer">🛸 Bo0'sViDClone V9.0 Ultimate Commercial Core</div>
+        <div class="banner-title">👉 Mr:- Bo0</div>
+        <div class="banner-subtitle">🛒 MOntgk - مــنتــجـك</div>
+        <div class="banner-footer">🛸 Ultimate Mr:-Bo0's Factory V 21.0</div>
     </div>
 """, unsafe_allow_html=True)
 
@@ -91,9 +91,9 @@ def process_image_template(image_path, blur_background=False, remove_bg_placehol
     try:
         arabic_font = get_arabic_font(int(h * 0.035) if h > 500 else 18)
         if arabic_font:
-            draw.text((20, h - 45), "مـنتــجـك - Montgk", fill=(255, 255, 255, 220), font=arabic_font)
+            draw.text((20, h - 45), "مـنتـجـكـ-Montgk", fill=(255, 255, 255, 220), font=arabic_font)
         else:
-            draw.text((20, h - 40), "Montgk Brand", fill=(255, 255, 255, 180))
+            draw.text((20, h - 40), "مـنتـجـكـ-Montgk", fill=(255, 255, 255, 180))
     except: pass
     
     out_img_path = os.path.join(TMP_DIR, "templated_output.png")
