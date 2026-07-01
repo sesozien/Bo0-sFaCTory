@@ -9,7 +9,7 @@ import streamlit as st
 from bs4 import BeautifulSoup
 from cv2 import blur
 import numpy as np
-from PIL import Image, ImageFilter, ImageDraw
+from PIL import Image, ImageFilter, ImageDraw, ImageFont
 from moviepy.editor import VideoFileClip, ImageClip, CompositeVideoClip, AudioFileClip
 import moviepy.video.fx.all as vfx
 import yt_dlp
@@ -53,6 +53,23 @@ CHANNELS_FILE = "registered_channels.json"
 if not os.path.exists(CHANNELS_FILE):
     with open(CHANNELS_FILE, "w") as f: json.dump(["Baghdadi011"], f)
 
+# 📥 حل مشكلة المربعات: دالة تحميل خط عربي للسيرفر أوتوماتيكياً
+def get_arabic_font(font_size=24):
+    font_path = os.path.join(TMP_DIR, "Cairo-Bold.ttf")
+    if not os.path.exists(font_path):
+        try:
+            # تحميل خط قاهره المحبب للبراندات أونلاين
+            url = "https://github.com/google/fonts/raw/main/ofl/cairo/Cairo-Bold.ttf"
+            r = requests.get(url, timeout=15)
+            with open(font_path, "wb") as f:
+                f.write(r.content)
+        except:
+            return None
+    try:
+        return ImageFont.truetype(font_path, font_size)
+    except:
+        return None
+
 # دالة ذكية لإضافة اللوجو والغلاف الشفاف للصور وتغطية اللوجوهات القديمة
 def process_image_template(image_path, blur_background=False, remove_bg_placeholder=False):
     img = Image.open(image_path).convert("RGBA")
@@ -68,7 +85,7 @@ def process_image_template(image_path, blur_background=False, remove_bg_placehol
 
     draw = ImageDraw.Draw(img)
     draw.rectangle([w-120, 0, w, 60], fill=(20, 20, 24, 220))
-    draw.rectangle([0, h-60, 150, h], fill=(20, 20, 24, 220))
+    draw.rectangle([0, h-60, 220, h], fill=(20, 20, 24, 220)) # تكبير الرقعة لتسيع النص بالكامل
 
     logo_p = "logo.png"
     if os.path.exists(logo_p):
@@ -76,8 +93,13 @@ def process_image_template(image_path, blur_background=False, remove_bg_placehol
         logo.thumbnail((int(w*0.25), int(h*0.15)))
         img.paste(logo, (w - logo.size[0] - 15, 15), logo)
         
+    # كتابة نص البراند بالخط العربي الصحيح لمنع المربعات
     try:
-        draw.text((20, h - 40), "مـنتــجـك - Montgk", fill=(255, 255, 255, 180))
+        arabic_font = get_arabic_font(int(h * 0.035) if h > 500 else 18)
+        if arabic_font:
+            draw.text((20, h - 45), "مـنتــجـك - Montgk", fill=(255, 255, 255, 220), font=arabic_font)
+        else:
+            draw.text((20, h - 40), "Montgk Brand", fill=(255, 255, 255, 180))
     except: pass
     
     out_img_path = os.path.join(TMP_DIR, "templated_output.png")
@@ -162,7 +184,7 @@ if "radar_started" not in st.session_state:
 
 with open(CHANNELS_FILE, "r") as f: current_channels = json.load(f)
 
-# 👑 القائمة الجانبية المحدثة لخيارات الألبومات والصوت
+# القائمة الجانبية
 with st.sidebar:
     st.markdown("<h2 style='color:#ff4b4b;'>🛰️ ترسانة السيطرة والتوقيت</h2>", unsafe_allow_html=True)
     video_duration_choice = st.selectbox(
@@ -296,7 +318,7 @@ with tab2:
                         st.video(video_slideshow_path)
                     except Exception as e: st.error(f"عطل في بناء فيديو الصور: {str(e)}")
 
-# ==================== التبويب الثالث: الفلتر الزمني الفولاذي المحدث ====================
+# ==================== التبويب الثالث ====================
 with tab3:
     st.subheader("🛰️ مركز الفحص والـ Forward وإعادة التسعير التلقائي")
     col1, col2 = st.columns(2)
@@ -306,7 +328,6 @@ with tab3:
     
     st.write("---")
     
-    # 🌟 إضافة الفلتر التأكيدي للتاريخ بناءً على طلبك
     date_filter = st.radio(
         "📅 اختر تاريخ البوستات لتأكيد الفحص وقنص الداتا الحية:",
         ("اليوم", "الأمس", "قبل أمس"),
@@ -314,7 +335,7 @@ with tab3:
         horizontal=True
     )
     
-    radar_mode = st.radio("اختر مصدر فحص المحتوى الحركي والمكتبوب:", ("🛰️ سحب رادار حي وفوري من القنوات المراقبة", "📋 إدخال يدوي لبوست معموله Forward لسرعة الإنجاز"), key="mode_9")
+    radar_mode = st.radio("اختر مصدر فحص المحتوى الحركي والمكتوب:", ("🛰️ سحب رادار حي وفوري من القنوات المراقبة", "📋 إدخل يدوي لبوست معموله Forward لسرعة الإنجاز"), key="mode_9")
     post_text_to_process, image_to_show, trigger_process = "", None, False
 
     if radar_mode == "🛰️ سحب رادار حي وفوري من القنوات المراقبة":
@@ -328,19 +349,16 @@ with tab3:
                         soup = BeautifulSoup(res.content, "html.parser")
                         messages = soup.find_all("div", {"class": "tgme_widget_message_wrap"})
                         if messages:
-                            # فلترة البوستات لمطابقة التاريخ المختار
                             found_post = None
                             for msg in reversed(messages):
                                 text_div = msg.find("div", {"class": "tgme_widget_message_text"})
                                 time_tag = msg.find("time", {"class": "time"})
                                 
                                 if text_div and time_tag:
-                                    # قراءة تاريخ البوست الفعلي من تليجرام
-                                    post_time_str = time_tag.get("datetime", "") # Format: 2026-07-01T03:03:00+00:00
+                                    post_time_str = time_tag.get("datetime", "")
                                     if post_time_str:
                                         post_date = post_time_str.split("T")[0]
                                         
-                                        # حساب تاريخ المقارنة بناءً على اختيار المايسترو
                                         today_date = datetime.utcnow().strftime("%Y-%m-%d")
                                         yesterday_date = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
                                         before_yesterday_date = (datetime.utcnow() - timedelta(days=2)).strftime("%Y-%m-%d")
@@ -349,7 +367,6 @@ with tab3:
                                         if date_filter == "الأمس": target_date_str = yesterday_date
                                         elif date_filter == "قبل أمس": target_date_str = before_yesterday_date
                                         
-                                        # التطابق الفولاذي
                                         if post_date == target_date_str:
                                             found_post = msg
                                             break
