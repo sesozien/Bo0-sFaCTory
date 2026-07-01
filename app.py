@@ -13,7 +13,7 @@ from PIL import Image, ImageFilter, ImageDraw
 st.set_page_config(page_title="Bo0's Interactive Bot V13", page_icon="🥷", layout="centered")
 
 # 🚨 حط التوكن الحقيقي بتاعك هنا عشان البوت يشتغل لايف فوري
-BOT_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN_HERE" 
+BOT_TOKEN = "8685178390:AAEgzrKz2yHW2oeflsZyZMeSN1Nw0da3vvI" 
 
 # واجهة Streamlit الشيك
 st.markdown("""
