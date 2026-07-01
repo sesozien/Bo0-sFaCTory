@@ -15,7 +15,7 @@ import moviepy.video.fx.all as vfx
 import yt_dlp
 
 # إعدادات المنصة المتقدمة
-st.set_page_config(page_title="Bo0'sViDClone v9.0 Ultimate", page_icon="🛸", layout="centered")
+st.set_page_config(page_title="Bo0sViDClone v9.0 Ultimate", page_icon="🛸", layout="centered")
 
 # استايل التنسيق المودرن الداكن لبراند مــنتــجـك
 st.markdown("""
@@ -38,13 +38,11 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown("""
-    <div class="web-banner">
-        <div class="banner-title">👉 Mr:- Bo0</div>
-        <div class="banner-subtitle">🛒 MOntgk - مــنتــجـك</div>
-        <div class="banner-footer">🛸 Ultimate Mr:-Bo0's Factory V 21.0</div>
-    </div>
-""", unsafe_allow_html=True)
+st.markdown("""     <div class="web-banner">     
+    <div class="banner-title">👉 Mr:- Bo0</div>     
+    <div class="banner-subtitle">🛒 MOntgk - مــنتــجـك</div>     
+    <div class="banner-footer">🛸 Ultimate Mr:-Bo0's Factory V 21.0</div>
+</div> """, unsafe_allow_html=True)
 
 TMP_DIR = "radar_media"
 if not os.path.exists(TMP_DIR): os.makedirs(TMP_DIR)
@@ -53,7 +51,6 @@ CHANNELS_FILE = "registered_channels.json"
 if not os.path.exists(CHANNELS_FILE):
     with open(CHANNELS_FILE, "w") as f: json.dump(["Baghdadi011"], f)
 
-# دالة تحميل خط عربي للسيرفر أوتوماتيكياً لمنع المربعات
 def get_arabic_font(font_size=24):
     font_path = os.path.join(TMP_DIR, "Cairo-Bold.ttf")
     if not os.path.exists(font_path):
@@ -65,7 +62,6 @@ def get_arabic_font(font_size=24):
     try: return ImageFont.truetype(font_path, font_size)
     except: return None
 
-# دالة ذكية لإضافة اللوجو والغلاف الشفاف للصور وتغطية اللوجوهات القديمة
 def process_image_template(image_path, blur_background=False, remove_bg_placeholder=False):
     img = Image.open(image_path).convert("RGBA")
     w, h = img.size
@@ -91,20 +87,18 @@ def process_image_template(image_path, blur_background=False, remove_bg_placehol
     try:
         arabic_font = get_arabic_font(int(h * 0.035) if h > 500 else 18)
         if arabic_font:
-            draw.text((20, h - 45), "مـنتـجـكـ-Montgk", fill=(255, 255, 255, 220), font=arabic_font)
+            draw.text((20, h - 45), "مـنتــجـك - Montgk", fill=(255, 255, 255, 220), font=arabic_font)
         else:
-            draw.text((20, h - 40), "مـنتـجـكـ-Montgk", fill=(255, 255, 255, 180))
+            draw.text((20, h - 40), "Montgk Brand", fill=(255, 255, 255, 180))
     except: pass
     
     out_img_path = os.path.join(TMP_DIR, "templated_output.png")
     img.save(out_img_path, "PNG")
     return out_img_path
 
-# --- محرك حسبة الأسعار الذكي المطور ---
-def extract_original_price_only(text):
-    """دالة مخصصة فقط لقنص السعر المبدئي بدون تعديل النص لتجنب التخريف"""
-    # تنظيف مؤقت لتفادي أرقام الشوارع والعناوين الشهيرة
-    clean_text = re.sub(r'\d+\s*(?:شارع|طريق|ميدان|دور|شقة|مكرر)', '', text)
+def extract_original_price_only(text, max_limit=None):
+    clean_text = re.sub(r'01[0125]\d{8}', '', text)
+    clean_text = re.sub(r'\d+\s*(?:شارع|طريق|ميدان|دور|شقة|مكرر)', '', clean_text)
     clean_text = clean_text.replace("2026", "").replace("2025", "")
     
     price_patterns = [
@@ -112,18 +106,21 @@ def extract_original_price_only(text):
         r'(\d+)\s*(?:جنيه|جنية|ج\s|جنيهًا)',
         r'(?:سعر الدسته|سعر البوكس)\s*(\d+)'
     ]
+    
     for pattern in price_patterns:
-        match = re.search(pattern, clean_text)
-        if match:
-            num = [n for n in match.groups() if n is not None]
-            if num: return int(num[0]), num[0]
+        for match in re.finditer(pattern, clean_text):
+            val = int(match.group(1))
+            if max_limit and val > max_limit: continue
+            return val, match.group(1)
             
     all_numbers = re.findall(r'\d+', clean_text)
-    if all_numbers:
-        return int(all_numbers[0]), all_numbers[0]
+    for num_str in all_numbers:
+        val = int(num_str)
+        if max_limit and val > max_limit: continue
+        if val < 50000:
+            return val, num_str
+            
     return 0, ""
-
-def downloaded_or_not(): pass
 
 def download_from_link(url):
     output_template = 'web_input.mp4'
@@ -135,9 +132,8 @@ def download_from_link(url):
     with yt_dlp.YoutubeDL(ydl_opts) as ydl: ydl.download([url])
     return output_template
 
-# السيرفر الخلفي للرادار
 def live_radar_background_worker():
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
     history_file = "radar_sent_history.txt"
     while True:
         try:
@@ -169,10 +165,7 @@ with open(CHANNELS_FILE, "r") as f: current_channels = json.load(f)
 # القائمة الجانبية
 with st.sidebar:
     st.markdown("<h2 style='color:#ff4b4b;'>🛰️ ترسانة السيطرة والتوقيت</h2>", unsafe_allow_html=True)
-    video_duration_choice = st.selectbox(
-        "اختر مدة رندرة الفيديو القصيرة:",
-        ("20 ثانية (أسرع رندرة للـ Reels)", "30 ثانية (مثالي للشورتس)", "60 ثانية (دقيقة كاملة)", "الفيديو كامل (حد أقصى 5 دقائق)")
-    )
+    video_duration_choice = st.selectbox("اختر مدة رندرة الفيديو القصيرة:", ("20 ثانية (أسرع رندرة للـ Reels)", "30 ثانية (مثالي للشورتس)", "60 ثانية (دقيقة كاملة)", "الفيديو كامل (حد أقصى 5 دقائق)"))
     custom_audio_track = "my_luxury_brand_track.wav"
     use_custom_audio = st.checkbox(f"دمج تراك الصوت الحصري ({custom_audio_track})", value=True)
     st.write("---")
@@ -187,7 +180,7 @@ with st.sidebar:
             with open(CHANNELS_FILE, "w") as f: json.dump(current_channels, f)
             st.success("✅ القناة دخلت تحت مجهر الرادار لايف!")
 
-tab1, tab2, tab3 = st.tabs(["🎬 تشفير ومونتاج الفيديو", "🖼️ قالب ألبومات وصور المنتجات", "🛰️ رادار القنوات والـ Forward"])
+tab1, tab2, tab3 = st.tabs(["🎬 تشفير ومونتاج الفيديو", "🖼️ قالب ألبومات وصور المنتجات mercantile", "🛰️ رادار القنوات والـ Forward"])
 
 # ==================== التبويب الأول ====================
 with tab1:
@@ -218,7 +211,7 @@ with tab1:
                 ready_to_process = True
 
     if ready_to_process:
-        with st.spinner("⚡ جاري تشغيل المايسترو وحجب أي علامة منصة مكررة..."):
+        with st.spinner("⚡ جاري تشغيل المايسترو..."):
             try:
                 clip = VideoFileClip(input_path)
                 if "20 ثانية" in video_duration_choice: clip = clip.subclip(0, min(20, clip.duration))
@@ -234,8 +227,7 @@ with tab1:
                 if use_custom_audio and os.path.exists(custom_audio_track):
                     audio_overlay = AudioFileClip(custom_audio_track).subclip(0, modified_clip.duration)
                     modified_clip = modified_clip.set_audio(audio_overlay)
-                else:
-                    modified_clip = modified_clip.fx(vfx.speedx, 1.03)
+                else: modified_clip = modified_clip.fx(vfx.speedx, 1.03)
                 
                 if os.path.exists(logo_path):
                     logo = (ImageClip(logo_path).set_duration(modified_clip.duration).resize(height=55).margin(right=15, top=15, opacity=0).set_pos(("right", "top")).set_opacity(0.8))
@@ -245,11 +237,8 @@ with tab1:
                 final_clip.write_videofile(output_path, codec="libx264", audio_codec="aac", preset="ultrafast", threads=4)
                 clip.close()
                 final_clip.close()
-                
-                st.success("🎉 تم معالجة وتشفير الفيديو وطمر علامات المنصات القديمة بنجاح!")
+                st.success("🎉 تم معالجة وتشفير الفيديو بنجاح!")
                 st.video(output_path)
-                with open(output_path, "rb") as file:
-                    st.download_button(label="📥 تحميل الفيديو النهائي بصوتك الحصري", data=file, file_name="Montgk_Secure_Vid.mp4", mime="video/mp4")
             except Exception as e: st.error(f"حدث خطأ: {str(e)}")
 
 # ==================== التبويب الثاني ====================
@@ -259,10 +248,8 @@ with tab2:
     
     if uploaded_images:
         if len(uploaded_images) > 1:
-            album_choice = st.radio("⚡ لقطنا مجموعة صور! قولي يا معلمي عايز تطلعهم إزاي؟", 
-                                    ("📥 ألبوم تجميعه صور مفرودة (جاهزة للتحميل كـ صور منفصلة بالأسطمبة)", "🎬 دمجهم فيديو متحرك (Slideshow) بصوتك الحصري"))
-        else:
-            album_choice = "📥 ألبوم تجميعه صور مفرودة (جاهزة للتحميل كـ صور منفصلة بالأسطمبة)"
+            album_choice = st.radio("⚡ لقطنا مجموعة صور!", ("📥 ألبوم تجميعه صور مفرودة", "🎬 دمجهم فيديو متحرك (Slideshow)"))
+        else: album_choice = "📥 ألبوم تجميعه صور مفرودة"
 
         if st.button("⚙️ ابدأ معالجة وتجميل قالب الصور الحصري"):
             saved_paths = []
@@ -273,148 +260,110 @@ with tab2:
                 saved_paths.append(processed_p)
                 if os.path.exists(temp_p): os.remove(temp_p)
             
-            if album_choice == "📥 ألبوم تجميعه صور مفرودة (جاهزة للتحميل كـ صور منفصلة بالأسطمبة)":
-                st.success("🎉 تمت الفرمطة وتركيب اللوجو والأسطمبة الشيك على كل الصور!")
-                for idx, p in enumerate(saved_paths):
-                    st.image(p, caption=f"🖼️ منتج رقم {idx+1} جاهز ونظيف تماماً", use_container_width=True)
-                    with open(p, "rb") as file:
-                        st.download_button(label=f"📥 تحميل صورة المنتج {idx+1} الفاخرة", data=file, file_name=f"Montgk_Product_{idx+1}.png", mime="image/png")
+            if album_choice == "📥 ألبوم تجميعه صور مفرودة":
+                st.success("🎉 تمت الفرمطة وتركيب اللوجو والأسطمبة الشيك!")
+                for idx, p in enumerate(saved_paths): st.image(p, caption=f"🖼️ منتج رقم {idx+1}", use_container_width=True)
             else:
-                with st.spinner("🎬 جاري نسج الصور في مقطع فيديو شورتس مدمج بالصوت..."):
-                    try:
-                        img_clips = [ImageClip(p).set_duration(3) for p in saved_paths]
-                        video_slideshow = vfx.concat_video_clips(img_clips)
-                        if os.path.exists(custom_audio_track):
-                            video_slideshow = video_slideshow.set_audio(AudioFileClip(custom_audio_track).subclip(0, video_slideshow.duration))
-                        video_slideshow_path = "images_slideshow_output.mp4"
-                        video_slideshow.write_videofile(video_slideshow_path, codec="libx264", fps=24, preset="ultrafast")
-                        st.success("🎬 مبروك يا صاحبي! تم بناء فيديو تجميعة الصور بنجاح!")
-                        st.video(video_slideshow_path)
-                    except Exception as e: st.error(f"عطل في بناء فيديو الصور: {str(e)}")
+                with st.spinner("🎬 جاري نسج الصور في مقطع فيديو..."):
+                    img_clips = [ImageClip(p).set_duration(3) for p in saved_paths]
+                    video_slideshow = vfx.concat_video_clips(img_clips)
+                    if os.path.exists(custom_audio_track):
+                        video_slideshow = video_slideshow.set_audio(AudioFileClip(custom_audio_track).subclip(0, video_slideshow.duration))
+                    video_slideshow_path = "images_slideshow_output.mp4"
+                    video_slideshow.write_videofile(video_slideshow_path, codec="libx264", fps=24, preset="ultrafast")
+                    st.video(video_slideshow_path)
 
-# ==================== التبويب الثالث: مركز التحكم والتدخل اليدوي بالأسعار ====================
+# ==================== التبويب الثالث: الفحص وإعادة التسعير المحمي ====================
 with tab3:
     st.subheader("🛰️ مركز الفحص والـ Forward وإعادة التسعير التلقائي")
     col1, col2 = st.columns(2)
-    with col1: price_inc_rate = st.number_input("نسبة زيادة السعر الخاصة بك (%):", min_value=0, max_value=100, value=25, key="inc_p_9")
-    with col2: box_items_count = st.number_input("عدد القطع داخل العلبة لحساب القطعة جملة:", min_value=1, max_value=100, value=12, key="count_p_9")
-    fb_profile_link = st.text_input("رابط صفحة الفيسبوك الخاصة بك للتواصل (FB Link):", value="https://www.facebook.com/montgk1", key="fb_l_9")
+    with col1: price_inc_rate = st.number_input("نسبة زيادة السعر الخاصة بك (%):", min_value=0, max_value=100, value=25)
+    with col2: box_items_count = st.number_input("عدد القطع داخل العلبة لحساب القطعة جملة:", min_value=1, max_value=100, value=12)
+    fb_profile_link = st.text_input("رابط صفحة الفيسبوك الخاصة بك للتواصل:", value="https://www.facebook.com/montgk1")
+    
+    st.markdown("#### 🛡️ فلاتر الأمان الذكية لمنع التخريف")
+    enable_max_filter = st.checkbox("⚠️ تفعيل ميزة تحديد الحد الأقصى للسعر (لتجاهل أرقام الواتساب والشوارع تماماً)", value=True)
+    max_price_threshold = None
+    if enable_max_filter:
+        max_price_threshold = st.number_input("أقصى سعر منطقي لمنتج مفرد أو دسته عندك في المحل كام؟ (ج):", min_value=1, max_value=100000, value=3000)
     
     st.write("---")
+    date_filter = st.radio("📅 اختر تاريخ البوستات:", ("اليوم", "الأمس", "قبل أمس"), index=0, horizontal=True)
+    radar_mode = st.radio("اختر مصدر فحص المحتوى:", ("🛰️ سحب رادار حي وفوري", "📋 إدخل يدوي لبوست معموله Forward"), key="mode_9")
     
-    date_filter = st.radio(
-        "📅 اختر تاريخ البوستات لتأكيد الفحص وقنص الداتا الحية:",
-        ("اليوم", "الأمس", "قبل أمس"),
-        index=0,
-        horizontal=True
-    )
-    
-    radar_mode = st.radio("اختر مصدر فحص المحتوى الحركي والمكتبوب:", ("🛰️ سحب رادار حي وفوري من القنوات المراقبة", "📋 إدخل يدوي لبوست معموله Forward لسرعة الإنجاز"), key="mode_9")
-    
-    # استخدام session_state لتخزين البوستات الملقوطة منعا لاختفائها عند تعديل السعر يدويًا
-    if "cached_posts" not in st.session_state:
-        st.session_state["cached_posts"] = []
+    if "cached_posts" not in st.session_state: st.session_state["cached_posts"] = []
 
-    if radar_mode == "🛰️ سحب رادار حي وفوري من القنوات المراقبة":
+    if radar_mode == "🛰️ سحب رادار حي وفوري":
         target_channel_input = st.selectbox("اختر القناة لالتقاط المنتجات:", current_channels)
         if st.button("🛰️ أطلق الرادار واقنص المحتوى"):
-            with st.spinner("جاري قنص الداتا وتجميع بوستات اليوم بالكامل..."):
+            with st.spinner("جاري قنص الداتا..."):
                 try:
-                    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+                    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
                     res = requests.get(f"https://t.me/s/{target_channel_input}", headers=headers, timeout=10)
                     if res.status_code == 200:
                         soup = BeautifulSoup(res.content, "html.parser")
                         messages = soup.find_all("div", {"class": "tgme_widget_message_wrap"})
-                        
                         temp_collected = []
-                        if messages:
-                            for msg in reversed(messages):
-                                text_div = msg.find("div", {"class": "tgme_widget_message_text"})
-                                time_tag = msg.find("time", {"class": "time"})
-                                
-                                if text_div and time_tag:
-                                    post_time_str = time_tag.get("datetime", "")
-                                    if post_time_str:
-                                        post_date = post_time_str.split("T")[0]
-                                        
-                                        today_date = datetime.utcnow().strftime("%Y-%m-%d")
-                                        yesterday_date = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
-                                        before_yesterday_date = (datetime.utcnow() - timedelta(days=2)).strftime("%Y-%m-%d")
-                                        
-                                        target_date_str = today_date
-                                        if date_filter == "الأمس": target_date_str = yesterday_date
-                                        elif date_filter == "قبل أمس": target_date_str = before_yesterday_date
-                                        
-                                        if post_date == target_date_str:
-                                            p_text = text_div.text.strip()
-                                            photo_url = None
-                                            photo_tag = msg.find("a", {"class": "tgme_widget_message_photo_wrap"})
-                                            if photo_tag:
-                                                style = photo_tag.get("style", "")
-                                                match = re.search(r"url\(['\"]?(.*?)['\"]?\)", style)
-                                                if match: photo_url = match.group(1)
-                                            if photo_url and photo_url.startswith('//'): 
-                                                photo_url = 'https:' + photo_url
-                                                
-                                            # استخراج مبدئي للسعر
-                                            auto_price, old_str = extract_original_price_only(p_text)
-                                            temp_collected.append({"text": p_text, "image": photo_url, "auto_price": auto_price, "old_str": old_str})
-                                            
-                            st.session_state["cached_posts"] = temp_collected
-                            if not temp_collected:
-                                st.warning(f"📭 مالقيتش أي بوستات منشورة بتاريخ ({date_filter}) في القناة دي!")
+                        for msg in reversed(messages):
+                            text_div = msg.find("div", {"class": "tgme_widget_message_text"})
+                            time_tag = msg.find("time", {"class": "time"})
+                            if text_div and time_tag:
+                                p_text = text_div.text.strip()
+                                photo_url = None
+                                photo_tag = msg.find("a", {"class": "tgme_widget_message_photo_wrap"})
+                                if photo_tag:
+                                    style = photo_tag.get("style", "")
+                                    match = re.search(r"url\(['\"]?(.*?)['\"]?\)", style)
+                                    if match: photo_url = match.group(1)
+                                if photo_url and photo_url.startswith('//'): photo_url = 'https:' + photo_url
+                                    
+                                auto_price, old_str = extract_original_price_only(p_text, max_limit=max_price_threshold)
+                                temp_collected.append({"text": p_text, "image": photo_url, "auto_price": auto_price, "old_str": old_str})
+                        st.session_state["cached_posts"] = temp_collected
                 except Exception as e: st.error(f"خطأ في الرادار: {str(e)}")
     else:
-        forwarded_text = st.text_area("الزق نص البوست الـ Forward هنا بالأسعار القديمة:", key="for_text_9")
-        uploaded_image = st.file_uploader("📥 ارفع صورة المنتج المصاحبة للبوست:", type=["jpg", "jpeg", "png"], key="for_img_9")
+        forwarded_text = st.text_area("الزق نص البوست الـ Forward هنا:")
+        uploaded_image = st.file_uploader("📥 ارفع صورة المنتج المصاحبة:")
         if st.button("⚡ فرم وتعديل بوست الـ Forward فوراً"):
             if forwarded_text:
-                auto_price, old_str = extract_original_price_only(forwarded_text)
+                auto_price, old_str = extract_original_price_only(forwarded_text, max_limit=max_price_threshold)
                 st.session_state["cached_posts"] = [{"text": forwarded_text, "image": uploaded_image, "auto_price": auto_price, "old_str": old_str}]
 
-    # عرض وفرم البوستات الملقوطة
+    # عرض البوستات الملقوطة والمحمية
     if st.session_state["cached_posts"]:
-        st.write(f"### 🎯 البوستات المتاحة ({len(st.session_state['cached_posts'])}):")
         for idx, item in enumerate(st.session_state["cached_posts"]):
             st.markdown(f"#### 📦 منتج رقم {idx + 1}")
+            if item["image"]: st.image(item["image"], width=250)
             
-            if item["image"]: 
-                st.image(item["image"], width=250)
+            # 🛡️ صمام الأمان النهائي: لو الرقم الملقوط لسه فلكي، بنخليه 0 أوتوماتيك عشان الـ input ما يضربش
+            default_val = int(item["auto_price"])
+            if default_val > 2000000000 or default_val < 0:
+                default_val = 0
             
-            # 🛠️ الصندوق السحري: التحكم والتعديل اليدوي في السعر الأصلي لو الرادار خرف
             chosen_orig_price = st.number_input(
-                f"✍️ السعر الأصلي الملقوط لمنتج {idx+1} (عدله لو قاري غلط):", 
-                min_value=0, max_value=50000, 
-                value=int(item["auto_price"]), 
+                f"✍️ السعر الأصلي لمنتج {idx+1} (شغال أوتوماتيك وتقدر تعدله يدوي):", 
+                min_value=0, 
+                max_value=2000000000, 
+                value=default_val, 
                 key=f"manual_price_{idx}"
             )
             
-            # حساب الحسبة بناء على السعر (سواء الملقوط أو المعدل يدويًا)
-            try:
-                new_box_price = int(chosen_orig_price * (1 + (price_inc_rate / 100)))
-                piece_p = round(new_box_price / box_items_count, 1)
-                if piece_p.is_integer(): piece_p = int(piece_p)
-                
-                # استبدال السعر القديم بالجديد في النص الأصلي ذكيًا
-                temp_post_text = item["text"]
-                if item["old_str"] and item["old_str"] in temp_post_text:
-                    # لو السعر الأصلي اتعدل بيدك، استبدل القيمة القديمة المكتوبة
-                    final_clean_text = temp_post_text.replace(item["old_str"], str(new_box_price), 1)
-                else:
-                    final_clean_text = temp_post_text + f"\n سعر العرض الجديد: {new_box_price} ج"
-                
-                final_clean_text = re.sub(r'#\w+', '', final_clean_text) # حذف الهاشتاجات القديمة
-            except:
-                final_clean_text, new_box_price, piece_p = item["text"], "خطأ", "خطأ"
-                
-            st.success(f"💵 السعر المعتمد حالياً: {chosen_orig_price} ج | السعر المحدث الجديد: {new_box_price} ج")
+            new_box_price = int(chosen_orig_price * (1 + (price_inc_rate / 100)))
+            piece_p = round(new_box_price / box_items_count, 1)
+            if piece_p.is_integer(): piece_p = int(piece_p)
             
-            # صياغة البوست النهائي الفاخر
+            temp_post_text = item["text"]
+            if item["old_str"] and item["old_str"] in temp_post_text:
+                final_clean_text = temp_post_text.replace(item["old_str"], str(new_box_price), 1)
+            else: final_clean_text = temp_post_text + f"\n سعر العرض الجديد: {new_box_price} ج"
+            
+            final_clean_text = re.sub(r'#\w+', '', final_clean_text)
+            
             final_commercial_post = (
                 f"{final_clean_text}\n\n"
                 f"📌 (سعر القطعة داخل البوكس واصل عليك بـ {piece_p} ج بس! 🔥)\n\n"
                 f"🎁 **خصم خاص للكميات وأصحاب المحلات!** 💣🔥\n\n"
                 f"🔗 للتواصل وطلب المنتج كاش فوراً: {fb_profile_link}"
             )
-            st.text_area(f"📋 انسخ بوست منتج {idx + 1} الجاهز للزق:", value=final_commercial_post, height=180, key=f"post_area_{idx}")
+            st.text_area(f"📋 البوست الجاهز للنسخ {idx + 1}:", value=final_commercial_post, height=180, key=f"post_area_{idx}")
             st.markdown("---")
