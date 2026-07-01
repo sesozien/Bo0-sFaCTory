@@ -10,10 +10,10 @@ from io import BytesIO
 from PIL import Image, ImageFilter, ImageDraw
 
 # ==================== إعدادات المنصة والبراند ====================
-st.set_page_config(page_title="Bo0's Interactive Bot V13", page_icon="🥷", layout="centered")
+st.set_page_config(page_title="Bo0's Interactive Bot V14", page_icon="🥷", layout="centered")
 
 # 🚨 حط التوكن الحقيقي بتاعك هنا عشان البوت يشتغل لايف فوري
-BOT_TOKEN = "8685178390:AAEgzrKz2yHW2oeflsZyZMeSN1Nw0da3vvI" 
+BOT_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN_HERE" 
 
 # واجهة Streamlit الشيك
 st.markdown("""
@@ -51,11 +51,11 @@ def save_to_excel(data_list):
     df = pd.DataFrame(data_list)
     df.to_excel(EXCEL_FILE, index=False)
 
-# مخزن مؤقت في الذاكرة لحفظ حالة الاستجواب لكل مستخدم (حسب الـ Chat ID)
+# مخزن مؤقت في الذاكرة لحفظ حالة الاستجواب لكل مستخدم
 if "bot_sessions" not in st.session_state:
     st.session_state["bot_sessions"] = {}
 
-# دالة معالجة وختم الصور
+# دالة معالجة وختم الصور واللوجو الفوري
 def process_image_bot(img_path, sku_code):
     try:
         img = Image.open(img_path).convert("RGBA")
@@ -68,7 +68,7 @@ def process_image_bot(img_path, sku_code):
         mask = mask.filter(ImageFilter.GaussianBlur(radius=15))
         img = Image.composite(img, blurred_img, mask)
         
-        # كتابة الحقوق براند مـنتـجكـ
+        # كتابة الحقوق براند مـنتـجكـ وتوقيع Mr:- Bo0
         draw = ImageDraw.Draw(img)
         draw.rectangle([0, h-50, w, h], fill=(20, 20, 24, 200))
         try:
@@ -93,19 +93,21 @@ def run_telegram_bot():
                 updates = res.json().get("result", [])
                 for update in updates:
                     offset = update["update_id"] + 1
-                    msg = update.get("message") or update.get("channel_post")
+                    
+                    # قنص الرسالة سواء عادية أو Forward
+                    msg = update.get("message") or update.get("channel_post") or update.get("edited_message")
                     if not msg: continue
                     
                     chat_id = msg["chat"]["id"]
                     msg_id = msg["message_id"]
                     sessions = st.session_state["bot_sessions"]
                     
-                    # 1️⃣ الحالة الأولى: المستخدم بعت صورة منتج جديدة
+                    # 💥 فحص وجود الصورة حتى لو جوة رسالة معاد توجيهها (Forward)
                     if "photo" in msg:
-                        photo_file = msg["photo"][-1]  # أعلى جودة
+                        photo_file = msg["photo"][-1]  # أعلى جودة للصورة
                         file_id = photo_file["file_id"]
                         
-                        # تحميل الصورة وحفظها مؤقتاً
+                        # تحميل الصورة وحفظها فوراً
                         f_res = requests.get(f"{base_url}/getFile", params={"file_id": file_id}).json()
                         f_path = f_res["result"]["file_path"]
                         img_data = requests.get(f"https://api.telegram.org/file/bot{BOT_TOKEN}/{f_path}").content
@@ -113,22 +115,22 @@ def run_telegram_bot():
                         local_img_path = os.path.join(TMP_DIR, f"raw_{chat_id}.png")
                         with open(local_img_path, "wb") as f: f.write(img_data)
                         
-                        # فتح جلسة استجواب جديدة للمستند ده
+                        # فتح جلسة الاستجواب الفورية
                         sessions[chat_id] = {
                             "step": "WAITING_SKU",
                             "raw_image_path": local_img_path,
                             "sku": "", "name": "", "price": "", "desc": ""
                         }
                         
-                        # إرسال سؤال الـ SKU
+                        # إطلاق أول رصاصة استجواب
                         requests.post(f"{base_url}/sendMessage", json={
                             "chat_id": chat_id,
-                            "text": "🔢 الخطوة (1/4):\nمن فضلك اعمل Reply (رد) على الرسالة دي واكتب كود المنتج (SKU):",
+                            "text": "🔢 لقطت المنتج يا صاحبي! (الخطوة 1/4):\nاعمل Reply (رد) على الرسالة دي واكتب كود المنتج (SKU):",
                             "reply_to_message_id": msg_id
                         })
                         continue
                     
-                    # 2️⃣ الحالة الثانية: المستخدم بيرد (Reply) على أسئلة البوت
+                    # شات الاستجواب التفاعلي عبر الـ Reply
                     if chat_id in sessions and "reply_to_message" in msg:
                         session = sessions[chat_id]
                         reply_text = msg.get("text", "").strip()
@@ -138,64 +140,58 @@ def run_telegram_bot():
                             session["step"] = "WAITING_NAME"
                             requests.post(f"{base_url}/sendMessage", json={
                                 "chat_id": chat_id,
-                                "text": "🏷️ الخطوة (2/4):\nتمام يا صاحبي، اعمل Reply واكتب اسم المنتج التجاري المعتمد:",
+                                "text": "🏷️ الخطوة (2/4):\nتمام يا كبير، اعمل Reply واكتب اسم المنتج التجاري الحصري:",
                                 "reply_to_message_id": msg_id
                             })
-                            
                         elif session["step"] == "WAITING_NAME":
                             session["name"] = reply_text
                             session["step"] = "WAITING_PRICE"
                             requests.post(f"{base_url}/sendMessage", json={
                                 "chat_id": chat_id,
-                                "text": "💵 الخطوة (3/4):\nاعمل Reply واكتب سعر البيع النهائي (أرقام فقط):",
+                                "text": "💵 الخطوة (3/4):\nاعمل Reply واكتب سعر البيع (أرقام فقط):",
                                 "reply_to_message_id": msg_id
                             })
-                            
                         elif session["step"] == "WAITING_PRICE":
                             session["price"] = reply_text
                             session["step"] = "WAITING_DESC"
                             requests.post(f"{base_url}/sendMessage", json={
                                 "chat_id": chat_id,
-                                "text": "📝 الخطوة (4/4) الأخيرة:\nاعمل Reply واكتب الوصف التفصيلي أو المميزات للمنتج:",
+                                "text": "📝 الخطوة (4/4) الأخيرة:\nاعمل Reply واكتب الوصف والمميزات عشان أقفل الجدول واللوجو:",
                                 "reply_to_message_id": msg_id
                             })
-                            
                         elif session["step"] == "WAITING_DESC":
                             session["desc"] = reply_text
                             
-                            # 🛠️ معالجة الصورة وفك الشفرات وحفظ السطر في الإكسيل
+                            # معالجة الصورة وإضافة اللوجو
                             final_img = process_image_bot(session["raw_image_path"], session["sku"])
                             
+                            # حفظ البيانات في شيت الإكسيل
                             current_products = load_excel_data()
                             current_products.append({
-                                "كود المنتج (SKU)": session["sku"],
-                                "اسم المنتج": session["name"],
-                                "سعر البيع": session["price"],
-                                "الوصف التفصيلي": session["desc"],
+                                "كود المنتج (SKU)": session["sku"], "اسم المنتج": session["name"],
+                                "سعر البيع": session["price"], "الوصف التفصيلي": session["desc"],
                                 "ملف الصورة المفرومة": os.path.basename(final_img),
                                 "حقوق الملكية": "🔒 مـنتـجكـ - Montgk & Mr:- Bo0"
                             })
                             save_to_excel(current_products)
                             
-                            # ختم الاستجواب بنجاح ساحق
                             requests.post(f"{base_url}/sendMessage", json={
                                 "chat_id": chat_id,
                                 "text": f"🎉 تسلم إيدك يا مايسترو! المنتج [ {session['name']} ] اتفرز واتقشر ودخل شيت الإكسيل أوتوماتيك، وحقوق براند مـنتـجكـ في الأمان! 👑🥷",
                                 "reply_to_message_id": msg_id
                             })
-                            # إغلاق الجلسة بنجاح
                             del sessions[chat_id]
                             
         except Exception as e:
             time.sleep(2)
 
-# تشغيل تراك البوت السري في thread منفصل عشان السيرفر يفضل صاحي
+# تشغيل البوت السري في الكواليس
 if "bot_thread_started" not in st.session_state:
     st.session_state["bot_thread_started"] = True
     t = threading.Thread(target=run_telegram_bot, daemon=True)
     t.start()
 
-# ==================== لوحة تحكم الويب لرؤية وتحميل الإكسيل ====================
+# ==================== لوحة تحكم الويب ====================
 st.subheader("📦 مستودع المنتجات الحالي (تحديث لحظي من البوت السري)")
 
 products_list = load_excel_data()
@@ -203,7 +199,6 @@ if products_list:
     df_display = pd.DataFrame(products_list)
     st.dataframe(df_display)
     
-    # زرار التحميل الفوري
     output = BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df_display.to_excel(writer, index=False, sheet_name='Montgk_Products')
@@ -213,4 +208,4 @@ if products_list:
         file_name="Montgk_Empire_Products.xlsx"
     )
 else:
-    st.info("📭 المستودع فاضي حالياً. ابعت أول صورة منتج للبوت السري من تليفونك وابدأ الاستجواب!")
+    st.info("📭 المستودع فاضي حالياً. اعمل Forward لأول صورة منتج للبوت من تليفونك وابدأ الاستجواب!")
