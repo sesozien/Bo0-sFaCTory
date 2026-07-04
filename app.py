@@ -18,7 +18,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 st.set_page_config(page_title="Bo0sViDClone v11.0 VIP", page_icon="🛸", layout="wide")
 
 # ⚠️ حط التوكن بتاعك هنا عشان البوت يشتغل لايف
-TOKEN = "YOUR_TELEGRAM_BOT_TOKEN_HERE"
+TOKEN = "8685178390:AAEgzrKz2yHW2oeflsZyZMeSN1Nw0da3vvI"
 
 TMP_DIR = "radar_media"
 if not os.path.exists(TMP_DIR): os.makedirs(TMP_DIR)
