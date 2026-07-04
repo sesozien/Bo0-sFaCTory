@@ -1,5 +1,5 @@
 # config.py
-# ملف التحكم في فلاتر الكلمات الدليليلة لـ مــنتــجـك
+# ترسانة فلاتر الكلمات الدليليلة لـ مــنتــجـك
 
 # الكلمات المفتاحية الخاصة بالعدد والعبوات (الدست)
 DOZEN_KEYWORDS = [
@@ -12,16 +12,3 @@ PRICE_KEYWORDS = [
     "جنيه", "جنية", "ج", "السعر للدسته", "سعر الدسته", 
     "السعر", "سعر العلبه", "سعر الاستاند", "سعر"
 ]
-
-# دالة ذكية مساعدة للبحث عن الرقم المصاحب للكلمة المفتاحية
-import re
-
-def find_number_near_keywords(text, keywords):
-    for kw in keywords:
-        # البحث عن رقم يسبق أو يلحق الكلمة المفتاحية مباشرة
-        pattern = r'(?:' + re.escape(kw) + r'\s*[:\-=\s]*\s*(\d+))|(\d+)\s*' + re.escape(kw)
-        match = re.search(pattern, text)
-        if match:
-            # إرجاع أول مجموعة تلتقط الرقم
-            return int(match.group(1) or match.group(2))
-    return None
