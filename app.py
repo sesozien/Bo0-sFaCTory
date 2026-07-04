@@ -22,7 +22,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 
 st.set_page_config(page_title="Bo0sViDClone v12.0 Premium", page_icon="🛸", layout="wide")
 
-TOKEN = "YOUR_TELEGRAM_BOT_TOKEN_HERE" # ⚠️ حط التوكن بتاعك هنا لربط التليجرام
+TOKEN = "8685178390:AAEgzrKz2yHW2oeflsZyZMeSN1Nw0da3vvI" # ⚠️ حط التوكن بتاعك هنا لربط التليجرام
 EXCEL_PATH = "Amazon_Shopping_Montgk.xlsx"
 ACTIVE_LOGO_PATH = "logo.png"
 DEFAULT_LOGO_PATH = "default_logo.png"
