@@ -20,7 +20,7 @@ import config
 # إعدادات المنصة المتقدمة
 st.set_page_config(page_title=config.PAGE_TITLE, page_icon=config.PAGE_ICON, layout="centered")
 
-# تأمين وجود اللوجو الافتراضي لو مش موجود
+# تأمين وجود اللوجو الافتراضي لو مش موجود في السيرفر
 if not os.path.exists(config.DEFAULT_LOGO_PATH):
     Image.new('RGBA', (200, 200), color=(255, 75, 75, 255)).save(config.DEFAULT_LOGO_PATH)
 if not os.path.exists(config.ACTIVE_LOGO_PATH):
@@ -87,15 +87,15 @@ def process_image_template(image_path, blur_background=False, remove_bg_placehol
     draw.rectangle([w-120, 0, w, 60], fill=(20, 20, 24, 220))
     draw.rectangle([0, h-60, 220, h], fill=(20, 20, 24, 220))
 
-    # حقن اللوجو النشط من السيرفر مباشرة
+    # سحب وحقن اللوجو النشط المحفوظ حالياً في السيرفر
     if os.path.exists(config.ACTIVE_LOGO_PATH):
         logo = Image.open(config.ACTIVE_LOGO_PATH).convert("RGBA")
         logo.thumbnail((int(w*0.25), int(h*0.15)))
         img.paste(logo, (w - logo.size[0] - 15, 15), logo)
         
     try:
-        # استخدام الجملة الديناميكية المكتوبة في لوحة التحكم
-        current_brand_text = st.session_state.get("dynamic_brand_text", config.BRAND_NAME_EN)
+        # طباعة الجملة البديلة المكتوبة ديناميكياً من لوحة التحكم
+        current_brand_text = st.session_state.get("dynamic_brand_text", "Montgk Brand")
         arabic_font = get_arabic_font(int(h * 0.035) if h > 500 else 18)
         if arabic_font:
             draw.text((20, h - 45), current_brand_text, fill=(255, 255, 255, 220), font=arabic_font)
@@ -107,13 +107,13 @@ def process_image_template(image_path, blur_background=False, remove_bg_placehol
     img.save(out_img_path, "PNG")
     return out_img_path
 
-# --- محرك البحث الذكي المطور المعتمد على الكلمات المفتاحية الجديدة ---
+# --- محرك البحث والـ Regex المطور الشامل للكلمات المدمجة ---
 def extract_original_price_only(text, max_limit=None):
     clean_text = re.sub(r'01[0125]\d{8}', '', text)
     clean_text = re.sub(r'\d+\s*(?:شارع|طريق|ميدان|دور|شقة|مكرر)', '', clean_text)
     clean_text = clean_text.replace("2026", "").replace("2025", "")
     
-    # دمج الكلمات المفتاحية الجديدة في أنماط البحث الديناميكية
+    # بناء أنماط البحث الديناميكية بناءً على الترتيب الذكي للأطول فالأقصر
     price_patterns = []
     for kw in config.PRICE_KEYWORDS:
         price_patterns.append(re.escape(kw) + r'\s*[:\-=\s]*\s*(\d+)')
@@ -174,37 +174,37 @@ if "radar_started" not in st.session_state:
 
 with open(config.CHANNELS_FILE, "r") as f: current_channels = json.load(f)
 
-# ==================== 🛠️ لوحة التحكم الجانبية الحصرية ====================
+# ==================== 🛠️ لوحة التحكم الجانبية الذكية ====================
 with st.sidebar:
     st.markdown("<h2 style='color:#ff4b4b;'>🛰️ ترسانة السيطرة والتوقيت</h2>", unsafe_allow_html=True)
     
-    st.markdown("### 🖼️ إدارة لوجو البراند")
-    # إذا كان اللوجو النشط مرفوعًا سابقًا ومحفوظًا في السيرفر، بيعرضه تلقائيًا كـ "سجل حفظ"
+    st.markdown("### 🖼️ إدارة لوجو البراند والحفظ التلقائي")
+    # السجل الشغال دايماً لقراءة اللوجو من غير إعادة رفع كل مرة
     if os.path.exists(config.ACTIVE_LOGO_PATH):
-        st.image(config.ACTIVE_LOGO_PATH, caption="اللوجو المحفوظ حاليًا ونشط", width=120)
+        st.image(config.ACTIVE_LOGO_PATH, caption="اللوجو النشط في السيرفر حالياً", width=110)
         
-    uploaded_logo = st.file_uploader("ارفع لوجو جديد للموقع (هيتحفظ فوراً):", type=["png", "jpg", "jpeg"])
+    uploaded_logo = st.file_uploader("ارفع صورة لوجو جديدة للموقع:", type=["png", "jpg", "jpeg"])
     if uploaded_logo is not None:
         Image.open(uploaded_logo).save(config.ACTIVE_LOGO_PATH)
-        st.success("✅ تم حفظ وتحديث اللوجو في السيرفر!")
+        st.success("✅ تم حفظ وتثبيت اللوجو الجديد بنجاح في السيرفر!")
         st.rerun()
         
-    if st.button("🔄 إزالة اللوجو المخصص واستعادة الافتراضي"):
+    if st.button("🔄 تصفير اللوجو واستعادة الافتراضي"):
         if os.path.exists(config.ACTIVE_LOGO_PATH):
             os.remove(config.ACTIVE_LOGO_PATH)
         Image.open(config.DEFAULT_LOGO_PATH).save(config.ACTIVE_LOGO_PATH)
-        st.success("🔄 تم تصفير اللوجو بنجاح!")
+        st.success("🔄 تم مسح اللوجو المخصص والعودة للأصل!")
         st.rerun()
 
     st.write("---")
-    st.markdown("### 📝 نص البراند المطبوع")
+    st.markdown("### 📝 نص البراند السفلي المطبوع")
     if "dynamic_brand_text" not in st.session_state:
-        st.session_state["dynamic_brand_text"] = config.BRAND_NAME_EN
+        st.session_state["dynamic_brand_text"] = "Montgk Brand"
         
-    input_brand_text = st.text_input("تعديل كلمة الكابشن والصور البديلة:", value=st.session_state["dynamic_brand_text"])
+    input_brand_text = st.text_input("غير كلمة الـ Watermark البديلة هنا:", value=st.session_state["dynamic_brand_text"])
     if input_brand_text != st.session_state["dynamic_brand_text"]:
         st.session_state["dynamic_brand_text"] = input_brand_text
-        st.success("📝 تم تعديل نص البراند بنجاح!")
+        st.success("📝 تم تحديث كلمة البراند على الصور فوراً!")
         st.rerun()
 
     st.write("---")
@@ -222,7 +222,7 @@ with st.sidebar:
             with open(config.CHANNELS_FILE, "w") as f: json.dump(current_channels, f)
             st.success("✅ القناة دخلت تحت مجهر الرادار لايف!")
 
-tab1, tab2, tab3 = st.tabs(["🎬 تشفير ومونتاج الفيديو", "🖼️ قالب ألبومات وصور المنتجات pedagogical", "🛰️ رادار القنوات والـ Forward"])
+tab1, tab2, tab3 = st.tabs(["🎬 تشفير ومونتاج الفيديو", "🖼️ قالب ألبومات وصور المنتجات", "🛰️ رادار القنوات والـ Forward"])
 
 # ==================== التبويب الأول ====================
 with tab1:
@@ -284,7 +284,7 @@ with tab1:
 
 # ==================== التبويب الثاني ====================
 with tab2:
-    st.subheader(f"🖼️ مصنع تجميل صور المنتجات والأسطمبات الفورية لـ Montgk")
+    st.subheader("🖼️ مصنع تجميل صور المنتجات والأسطمبات الفورية لـ Montgk")
     uploaded_images = st.file_uploader("ارفع صورة أو مجموعة صور للمنتجات هنا ع الماشي:", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
     
     if uploaded_images:
@@ -314,7 +314,7 @@ with tab2:
                     video_slideshow.write_videofile(video_slideshow_path, codec="libx264", fps=24, preset="ultrafast")
                     st.video(video_slideshow_path)
 
-# ==================== التبويب الثالث ====================
+# ==================== التبويب الثالث (مطور بالكامل بناءً على طلبك) ====================
 with tab3:
     st.subheader("🛰️ مركز الفحص والـ Forward وإعادة التسعير التلقائي")
     col1, col2 = st.columns(2)
@@ -322,11 +322,14 @@ with tab3:
     with col2: box_items_count = st.number_input("عدد القطع داخل العلبة لحساب القطعة جملة:", min_value=1, max_value=100, value=config.DEFAULT_BOX_ITEMS_COUNT)
     fb_profile_link = st.text_input("رابط صفحة الفيسبوك الخاصة بك للتواصل:", value="https://www.facebook.com/montgk1")
     
-    st.markdown("#### 🛡️ فلاتر الأمان الذكية لمنع التخريف")
-    enable_max_filter = st.checkbox("⚠️ تفعيل ميزة تحديد الحد الأقصى للسعر (لتجاهل أرقام الواتساب والشوارع تماماً)", value=True)
-    max_price_threshold = None
-    if enable_max_filter:
-        max_price_threshold = st.number_input("أقصى سعر منطقي لمنتج مفرد أو دسته عندك في المحل كام؟ (ج):", min_value=1, max_value=100000, value=config.DEFAULT_MAX_PRICE_LIMIT)
+    st.markdown("#### 🛡️ فلاتر الأمان والحد الأقصى قبل الانطلاق")
+    # تم إلغاء الحد الأدنى تماماً، والحد الأقصى تكتبه يدوي في الواجهة قبل كبسة الانطلاق
+    max_price_threshold = st.number_input(
+        "اكتب الحد الأقصى للسعر المراد قنصه الآن (لتجاهل أرقام الفون والعناوين):", 
+        min_value=1, 
+        max_value=9999999, 
+        value=5000
+    )
     
     st.write("---")
     date_filter = st.radio("📅 اختر تاريخ البوستات:", ("اليوم", "الأمس", "قبل أمس"), index=0, horizontal=True)
@@ -337,7 +340,7 @@ with tab3:
     if radar_mode == "🛰️ سحب رادار حي وفوري":
         target_channel_input = st.selectbox("اختر القناة لالتقاط المنتجات:", current_channels)
         if st.button("🛰️ أطلق الرادار واقنص المحتوى"):
-            with st.spinner("جاري قنص الداتا..."):
+            with st.spinner("جاري قنص الداتا بالحد الأقصى المطلوب..."):
                 try:
                     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
                     res = requests.get(f"https://t.me/s/{target_channel_input}", headers=headers, timeout=10)
@@ -358,6 +361,7 @@ with tab3:
                                     if match: photo_url = match.group(1)
                                 if photo_url and photo_url.startswith('//'): photo_url = 'https:' + photo_url
                                     
+                                # تمرير الحد الأقصى المكتوب في الخانة للفلتر فوراً
                                 auto_price, old_str = extract_original_price_only(p_text, max_limit=max_price_threshold)
                                 temp_collected.append({"text": p_text, "image": photo_url, "auto_price": auto_price, "old_str": old_str})
                         st.session_state["cached_posts"] = temp_collected
@@ -375,8 +379,9 @@ with tab3:
             st.markdown(f"#### 📦 منتج رقم {idx + 1}")
             if item["image"]: st.image(item["image"], width=250)
             
+            # السعر الأصلي ملوش حد أدنى مقيد (min_value=0) عشان يفتح معاك أي تعديل يدوي حر
             chosen_orig_price = st.number_input(
-                f"✍️ السعر الأصلي لمنتج {idx+1} (شغال أوتوماتيك وتقدر تعدله يدوي):", 
+                f"✍️ السعر الأصلي لمنتج {idx+1} (تعديل يدوي مفتوح):", 
                 min_value=0, max_value=2000000000, value=int(item["auto_price"]), key=f"manual_price_{idx}"
             )
             
@@ -393,7 +398,7 @@ with tab3:
             
             final_commercial_post = (
                 f"{final_clean_text}\n\n"
-                f"📌 (سعر القطعة داخل الدسته واصل عليك بـ {piece_p} ج بس! 🔥)\n\n"
+                f"📌 (سعر القطعة داخل البوكس واصل عليك بـ {piece_p} ج بس! 🔥)\n\n"
                 f"🎁 **خصم خاص للكميات وأصحاب المحلات!** 💣🔥\n\n"
                 f"🔗 للتواصل وطلب المنتج كاش فوراً: {fb_profile_link}"
             )
