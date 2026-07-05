@@ -15,13 +15,14 @@ try:
 except ModuleNotFoundError:
     HAS_TELEGRAM = False
 
-import config
+# 🛠️ دمج الكلمات المفتاحية مباشرة هنا بديل ملف config الناقص
+DOZEN_KEYWORDS = ["دستة", "دسته", "علبة", "علبه", "كرتونة", "كرتونه", "بوكس", "مجموعة", "مجموعه", "عدد"]
+PRICE_KEYWORDS = ["جملة", "جمله", "شراء", "سعر", "تكلفتها", "تكلفة", "تكلفتة", "واقف", "واقفة"]
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 st.set_page_config(page_title="Bo0sViDClone v12.5 VIP", page_icon="🛸", layout="wide")
 
-# 🔒 التوكن النشط والمحفوظ بأمان
 TOKEN = "8685178390:AAEgzrKz2yHW2oeflsZyZMeSN1Nw0da3vvI" 
 
 EXCEL_PATH = "Amazon_Shopping_Montgk.xlsx"
@@ -33,7 +34,6 @@ if not os.path.exists(DEFAULT_LOGO_PATH):
 if not os.path.exists(ACTIVE_LOGO_PATH):
     Image.open(DEFAULT_LOGO_PATH).save(ACTIVE_LOGO_PATH)
 
-# 🔥 دالة التنسيق الاحترافية الفخمة باستخدام xlsxwriter المدمج لمنع الانهيار
 def save_styled_excel(file_path, new_row):
     arabic_headers = ["كود المنتج (SKU)", "اسم وعنوان المنتج", "سعر البيع (جنيه)", "اسم البراند", "الوصف والمميزات", "سعر القطعة جملة", "سعر الشراء الأصلي"]
     columns_keys = ["sku", "title", "standard_price", "brand_name", "description", "piece_price", "original_price"]
@@ -115,13 +115,12 @@ def save_styled_excel(file_path, new_row):
 if not os.path.exists(EXCEL_PATH):
     save_styled_excel(EXCEL_PATH, {"sku":"-", "title":"-", "standard_price":0, "brand_name":"-", "description":"-", "piece_price":0.0, "original_price":0})
 
-# --- 🎯 محرك الترتيب الذكي اللغوي ---
 def advanced_smart_parse(text):
     clean_text = re.sub(r'01[0125]\d{8}', '', text)
     clean_text = clean_text.replace("2026", "").replace("2025", "")
     
     box_count = None
-    for kw in config.DOZEN_KEYWORDS:
+    for kw in DOZEN_KEYWORDS:
         pattern = r'(?:' + re.escape(kw) + r'\s*[:\-=\s]*\s*(\d+))|(\d+)\s*' + re.escape(kw)
         match = re.search(pattern, clean_text)
         if match:
@@ -131,7 +130,7 @@ def advanced_smart_parse(text):
         box_count = 12
 
     total_price = None
-    for kw in config.PRICE_KEYWORDS:
+    for kw in PRICE_KEYWORDS:
         pattern = r'(?:' + re.escape(kw) + r'\s*[:\-=\s]*\s*(\d+))|(\d+)\s*' + re.escape(kw)
         match = re.search(pattern, clean_text)
         if match:
@@ -243,7 +242,7 @@ async def get_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def get_box_count(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         context.user_data['current_product']['box_count'] = int(update.message.text.strip())
-        await update.message.reply_text("🏭 **السؤال 6:** اسم البراند؟ (أو اكتب /skip لو عام)")
+        await update.message.reply_text("🏭 **السؤال 6:** اسم البراند? (أو اكتب /skip لو عام)")
         return ASK_BRAND
     except:
         await update.message.reply_text("⚠️ اكتب رقم صحيح:")
