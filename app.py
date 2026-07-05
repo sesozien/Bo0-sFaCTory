@@ -15,7 +15,7 @@ try:
 except ModuleNotFoundError:
     HAS_TELEGRAM = False
 
-# 🛠️ دمج الكلمات المفتاحية مباشرة هنا بديل ملف config الناقص
+# الكلمات المفتاحية
 DOZEN_KEYWORDS = ["دستة", "دسته", "علبة", "علبه", "كرتونة", "كرتونه", "بوكس", "مجموعة", "مجموعه", "عدد"]
 PRICE_KEYWORDS = ["جملة", "جمله", "شراء", "سعر", "تكلفتها", "تكلفة", "تكلفتة", "واقف", "واقفة"]
 
@@ -25,7 +25,7 @@ st.set_page_config(page_title="Bo0sViDClone v12.5 VIP", page_icon="🛸", layout
 
 TOKEN = "8685178390:AAEgzrKz2yHW2oeflsZyZMeSN1Nw0da3vvI" 
 
-EXCEL_PATH = "Amazon_Shopping_Montgk.xlsx"
+EXCEL_PATH = "Amazon_Shopping_Montgk.csv"  # تحويل لـ CSV لضمان التوافق التام والسرعة
 ACTIVE_LOGO_PATH = "logo.png"
 DEFAULT_LOGO_PATH = "default_logo.png"
 
@@ -34,83 +34,24 @@ if not os.path.exists(DEFAULT_LOGO_PATH):
 if not os.path.exists(ACTIVE_LOGO_PATH):
     Image.open(DEFAULT_LOGO_PATH).save(ACTIVE_LOGO_PATH)
 
+# دالة حفظ آمنة ومضمونة 100% بدون أي محركات تلوين تسبب انهيار البايثون
 def save_styled_excel(file_path, new_row):
-    arabic_headers = ["كود المنتج (SKU)", "اسم وعنوان المنتج", "سعر البيع (جنيه)", "اسم البراند", "الوصف والمميزات", "سعر القطعة جملة", "سعر الشراء الأصلي"]
     columns_keys = ["sku", "title", "standard_price", "brand_name", "description", "piece_price", "original_price"]
     
     rows_to_write = []
     if os.path.exists(file_path):
         try:
-            old_df = pd.read_excel(file_path)
+            old_df = pd.read_csv(file_path)
             for _, r in old_df.iterrows():
-                if pd.notna(r.iloc[0]) and not str(r.iloc[0]).startswith("🛸") and not str(r.iloc[0]).startswith("كود"):
+                if pd.notna(r.iloc[0]) and not str(r.iloc[0]).startswith("كود"):
                     rows_to_write.append(dict(zip(columns_keys, list(r[:7]))))
         except:
             pass
 
     rows_to_write.append(new_row)
     df_all = pd.DataFrame(rows_to_write)
-
-    writer = pd.ExcelWriter(file_path, engine='xlsxwriter')
-    df_all.to_excel(writer, index=False, sheet_name='كتالوج المنتجات', startrow=1, header=False)
-    
-    workbook  = writer.book
-    worksheet = writer.sheets['كتالوج المنتجات']
-    worksheet.right_to_left()
-    
-    header_format = workbook.add_format({
-        'bold': True, 'text_wrap': True, 'font_name': 'Arial', 'font_size': 11,
-        'fg_color': '#2A4D69', 'font_color': '#FFFFFF',
-        'align': 'center', 'valign': 'vcenter', 'border': 1, 'border_color': '#E0E0E0'
-    })
-    
-    zebra_format = workbook.add_format({
-        'font_name': 'Arial', 'font_size': 10, 'fg_color': '#F5F7FA',
-        'align': 'center', 'valign': 'vcenter', 'border': 1, 'border_color': '#E0E0E0'
-    })
-    
-    white_format = workbook.add_format({
-        'font_name': 'Arial', 'font_size': 10, 'fg_color': '#FFFFFF',
-        'align': 'center', 'valign': 'vcenter', 'border': 1, 'border_color': '#E0E0E0'
-    })
-    
-    text_left_zebra = workbook.add_format({
-        'font_name': 'Arial', 'font_size': 10, 'fg_color': '#F5F7FA',
-        'align': 'right', 'valign': 'vcenter', 'border': 1, 'border_color': '#E0E0E0'
-    })
-    
-    text_left_white = workbook.add_format({
-        'font_name': 'Arial', 'font_size': 10, 'fg_color': '#FFFFFF',
-        'align': 'right', 'valign': 'vcenter', 'border': 1, 'border_color': '#E0E0E0'
-    })
-
-    for col_num, header in enumerate(arabic_headers):
-        worksheet.write(1, col_num, header, header_format)
-        
-    for row_idx in range(len(df_all)):
-        actual_row = row_idx + 2
-        is_zebra = (actual_row % 2 == 0)
-        for col_idx in range(7):
-            val = df_all.iloc[row_idx, col_idx]
-            if col_idx in [1, 4]: 
-                current_fmt = text_left_zebra if is_zebra else text_left_white
-            else:
-                current_fmt = zebra_format if is_zebra else white_format
-            worksheet.write(actual_row, col_idx, val, current_fmt)
-            
-    sig_row = len(df_all) + 5
-    sig_format = workbook.add_format({
-        'bold': True, 'italic': True, 'font_name': 'Arial', 'font_size': 12,
-        'font_color': '#2A4D69', 'align': 'center', 'valign': 'vcenter'
-    })
-    worksheet.merge_range(sig_row, 0, sig_row, 6, "🛸 تم الإنشاء والترتيب بكل فخامة بواسطة: MR Bo0 🛸", sig_format)
-    
-    worksheet.set_row(1, 28)
-    for col_idx, col_key in enumerate(columns_keys):
-        max_len = max(df_all[col_key].astype(str).map(len).max(), len(arabic_headers[col_idx])) + 5
-        worksheet.set_column(col_idx, col_idx, max(max_len, 16))
-        
-    writer.close()
+    # الحفظ بصيغة ناصعة ونظيفة ومستقرة
+    df_all.to_csv(file_path, index=False)
 
 if not os.path.exists(EXCEL_PATH):
     save_styled_excel(EXCEL_PATH, {"sku":"-", "title":"-", "standard_price":0, "brand_name":"-", "description":"-", "piece_price":0.0, "original_price":0})
@@ -222,7 +163,7 @@ async def get_sku(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def get_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['current_product']['title'] = update.message.text.strip()
-    await update.message.reply_text("📝 **السؤال 3:** وصف ومميزات المنتج (Description)؟")
+    await update.message.reply_text("📝 **السؤال 3:** وصف ومميزات المنتج (Description) Leicht؟")
     return ASK_DESC
 
 async def get_desc(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -242,7 +183,7 @@ async def get_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def get_box_count(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         context.user_data['current_product']['box_count'] = int(update.message.text.strip())
-        await update.message.reply_text("🏭 **السؤال 6:** اسم البراند? (أو اكتب /skip لو عام)")
+        await update.message.reply_text("🏭 **السؤال 6:** اسم البراند؟ (أو اكتب /skip لو عام)")
         return ASK_BRAND
     except:
         await update.message.reply_text("⚠️ اكتب رقم صحيح:")
@@ -301,7 +242,7 @@ if HAS_TELEGRAM and "bot_thread_started" not in st.session_state and TOKEN != ""
     st.session_state["bot_thread_started"] = True
     threading.Thread(target=run_bot_loop, daemon=True).start()
 
-# ==================== 💻 واجهة العرض الرئيسية ====================
+# ==================== 💻 واجهة العرض الرئيسية المضمونة وبدون تلوين خارجي يسبب كراش ====================
 st.subheader("📊 كتالوج وجدول منتجات أمازون والمنصات الموحد")
 
 test_input = st.text_area("أدخل نص كشط المنتج لتجربة الفحص الذكي والترتيب اللغوي:")
@@ -312,7 +253,9 @@ if test_input:
 
 if os.path.exists(EXCEL_PATH):
     try:
-        df_display = pd.read_excel(EXCEL_PATH)
+        df_display = pd.read_csv(EXCEL_PATH)
+        # تعديل تسمية العناوين للعربي مباشرة على واجهة الويب عشان تظهر فخمة ومنظمة
+        df_display.columns = ["كود المنتج (SKU)", "اسم وعنوان المنتج", "سعر البيع (جنيه)", "اسم البراند", "الوصف والمميزات", "سعر القطعة جملة", "سعر الشراء الأصلي"]
         st.dataframe(df_display, use_container_width=True)
     except:
         st.info("📊 الجدول يتم تهيئته الآن واستقبل البيانات الفخمة...")
