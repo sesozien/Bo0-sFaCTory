@@ -7,12 +7,14 @@ import threading
 from datetime import datetime, timedelta
 import streamlit as st
 from bs4 import BeautifulSoup
-from cv2 import blur
+import cv2
 import numpy as np
 from PIL import Image, ImageFilter, ImageDraw, ImageFont
 from moviepy.editor import VideoFileClip, ImageClip, CompositeVideoClip, AudioFileClip
 import moviepy.video.fx.all as vfx
 import yt_dlp
+import io
+import pandas as pd
 
 # استدعاء ملف الكونفيج
 import config
@@ -71,7 +73,8 @@ def get_arabic_font(font_size=24):
     try: return ImageFont.truetype(font_path, font_size)
     except: return None
 
-def process_image_template(image_path, blur_background=False, remove_bg_placeholder=False):
+# دالة مطورة لمعالجة الصور بالشفافية ومنع اللطعة السمرا تماماً
+def process_image_template(image_path, blur_background=False, opacity_val=0.8):
     img = Image.open(image_path).convert("RGBA")
     w, h = img.size
     
@@ -84,17 +87,21 @@ def process_image_template(image_path, blur_background=False, remove_bg_placehol
         img = Image.composite(img, blurred_img, mask)
 
     draw = ImageDraw.Draw(img)
-    draw.rectangle([w-120, 0, w, 60], fill=(20, 20, 24, 220))
-    draw.rectangle([0, h-60, 220, h], fill=(20, 20, 24, 220))
 
-    # سحب وحقن اللوجو النشط المحفوظ حالياً في السيرفر
+    # سحب وحقن اللوجو النشط بالشفافية المطلوبة وبدون اللطعة السمرا
     if os.path.exists(config.ACTIVE_LOGO_PATH):
         logo = Image.open(config.ACTIVE_LOGO_PATH).convert("RGBA")
         logo.thumbnail((int(w*0.25), int(h*0.15)))
-        img.paste(logo, (w - logo.size[0] - 15, 15), logo)
+        
+        # تعديل الشفافية على لوجو الـ PNG مباشرة بناءً على تحكم السلايدر
+        r, g, b, a = logo.split()
+        a = a.point(lambda p: int(p * opacity_val))
+        logo_transparent = Image.merge("RGBA", (r, g, b, a))
+        
+        # اللصق الاحترافي باستخدام ماسك اللوجو الشفاف لمنع المربع الأسود
+        img.paste(logo_transparent, (w - logo.size[0] - 15, 15), logo_transparent)
         
     try:
-        # طباعة الجملة البديلة المكتوبة ديناميكياً من لوحة التحكم
         current_brand_text = st.session_state.get("dynamic_brand_text", "Montgk Brand")
         arabic_font = get_arabic_font(int(h * 0.035) if h > 500 else 18)
         if arabic_font:
@@ -103,9 +110,28 @@ def process_image_template(image_path, blur_background=False, remove_bg_placehol
             draw.text((20, h - 40), current_brand_text, fill=(255, 255, 255, 180))
     except: pass
     
-    out_img_path = os.path.join(config.TMP_DIR, "templated_output.png")
-    img.save(out_img_path, "PNG")
+    out_img_path = os.path.join(config.TMP_DIR, f"templated_{os.path.basename(image_path)}")
+    img.convert("RGB").save(out_img_path, "JPEG", quality=95)
     return out_img_path
+
+# دالة دمج الصور في صورة كولاج واحدة (ألبوم شبكي)
+def create_image_collage(image_paths):
+    images = [Image.open(p) for p in image_paths]
+    widths, heights = zip(*(i.size for i in images))
+    
+    # تجميع الصور جنب بعض بشكل احترافي مربع
+    total_width = sum(widths)
+    max_height = max(heights)
+    
+    collage_img = Image.new('RGB', (total_width, max_height), color=(14, 17, 23))
+    x_offset = 0
+    for im in images:
+        collage_img.paste(im, (x_offset, 0))
+        x_offset += im.size[0]
+        
+    out_collage_path = os.path.join(config.TMP_DIR, "montgk_collage_output.jpg")
+    collage_img.save(out_collage_path, "JPEG", quality=95)
+    return out_collage_path
 
 # --- محرك البحث والـ Regex المطور الشامل للكلمات المدمجة ---
 def extract_original_price_only(text, max_limit=None):
@@ -113,7 +139,6 @@ def extract_original_price_only(text, max_limit=None):
     clean_text = re.sub(r'\d+\s*(?:شارع|طريق|ميدان|دور|شقة|مكرر)', '', clean_text)
     clean_text = clean_text.replace("2026", "").replace("2025", "")
     
-    # بناء أنماط البحث الديناميكية بناءً على الترتيب الذكي للأطول فالأقصر
     price_patterns = []
     for kw in config.PRICE_KEYWORDS:
         price_patterns.append(re.escape(kw) + r'\s*[:\-=\s]*\s*(\d+)')
@@ -178,10 +203,13 @@ with open(config.CHANNELS_FILE, "r") as f: current_channels = json.load(f)
 with st.sidebar:
     st.markdown("<h2 style='color:#ff4b4b;'>🛰️ ترسانة السيطرة والتوقيت</h2>", unsafe_allow_html=True)
     
-    st.markdown("### 🖼️ إدارة لوجو البراند والحفظ التلقائي")
-    # السجل الشغال دايماً لقراءة اللوجو من غير إعادة رفع كل مرة
+    st.markdown("### 🎨 إعدادات الشفافية واللوجو الحية")
+    
+    # سلايدر التحكم الفوري في شفافية اللوجو لمنع اللطعة السمرا
+    logo_opacity = st.slider("درجة شفافية اللوجو والـ Watermark:", min_value=0.1, max_value=1.0, value=0.7, step=0.05)
+    
     if os.path.exists(config.ACTIVE_LOGO_PATH):
-        st.image(config.ACTIVE_LOGO_PATH, caption="اللوجو النشط في السيرفر حالياً", width=110)
+        st.image(config.ACTIVE_LOGO_PATH, caption="اللوجو النشط حالياً", width=110)
         
     uploaded_logo = st.file_uploader("ارفع صورة لوجو جديدة للموقع:", type=["png", "jpg", "jpeg"])
     if uploaded_logo is not None:
@@ -190,8 +218,7 @@ with st.sidebar:
         st.rerun()
         
     if st.button("🔄 تصفير اللوجو واستعادة الافتراضي"):
-        if os.path.exists(config.ACTIVE_LOGO_PATH):
-            os.remove(config.ACTIVE_LOGO_PATH)
+        if os.path.exists(config.ACTIVE_LOGO_PATH): os.remove(config.ACTIVE_LOGO_PATH)
         Image.open(config.DEFAULT_LOGO_PATH).save(config.ACTIVE_LOGO_PATH)
         st.success("🔄 تم مسح اللوجو المخصص والعودة للأصل!")
         st.rerun()
@@ -213,7 +240,6 @@ with st.sidebar:
     st.write("---")
     st.markdown("### 📸 إعدادات تجميل صور المنتجات")
     blur_bg_opt = st.checkbox("تفعيل تأثير الـ Blur الاحترافي لعزل الخلفية", value=True)
-    remove_bg_ask = st.checkbox("حذف واقتصاص الخلفية تماماً (تفريغ شفاف)", value=False)
     st.write("---")
     new_ch = st.text_input("أدخل معرف قناة تليجرام جديدة:", placeholder="Baghdadi011")
     if st.button("➕ تسجيل وتشغيل الرادار"):
@@ -224,7 +250,7 @@ with st.sidebar:
 
 tab1, tab2, tab3 = st.tabs(["🎬 تشفير ومونتاج الفيديو", "🖼️ قالب ألبومات وصور المنتجات", "🛰️ رادار القنوات والـ Forward"])
 
-# ==================== التبويب الأول ====================
+# ==================== التبويب الأول (تعديل الفيديو الفخم) ====================
 with tab1:
     st.subheader("🚀 منصة هندسة وبصمة الفيديو وحذف اللوجوهات القديمة")
     option = st.radio("اختر طريقة إدخال مقطع الفيديو:", ("لصق رابط فيديو (يوتيوب، فيسبوك، تيك توك)", "رفع ملف فيديو مباشر من جهازك"), key="vid_option")
@@ -252,7 +278,7 @@ with tab1:
                 ready_to_process = True
 
     if ready_to_process:
-        with st.spinner("⚡ جاري تشغيل المايسترو..."):
+        with st.spinner("⚡ جاري تشغيل المايسترو وحجب اللوجوهات بالـ Blur الذكي..."):
             try:
                 clip = VideoFileClip(input_path)
                 if "20 ثانية" in video_duration_choice: clip = clip.subclip(0, min(20, clip.duration))
@@ -261,8 +287,8 @@ with tab1:
                 else:
                     if clip.duration > 300: clip = clip.subclip(0, 300)
                 
-                modified_clip = clip.fx(vfx.mirror_x)
-                modified_clip = modified_clip.fx(vfx.crop, x1=5, y1=5, x2=clip.w-5, y2=clip.h-5)
+                # --- إلغاء تأثير قلب المرآة الغبي بناءً على طلبك لمنع عكس البضاعة ---
+                modified_clip = clip.fx(vfx.crop, x1=5, y1=5, x2=clip.w-5, y2=clip.h-5)
                 modified_clip = modified_clip.fx(vfx.colorx, 1.05)
                 
                 if use_custom_audio and os.path.exists(config.CUSTOM_AUDIO_TRACK):
@@ -271,39 +297,56 @@ with tab1:
                 else: modified_clip = modified_clip.fx(vfx.speedx, 1.03)
                 
                 if os.path.exists(config.ACTIVE_LOGO_PATH):
-                    logo = (ImageClip(config.ACTIVE_LOGO_PATH).set_duration(modified_clip.duration).resize(height=55).margin(right=15, top=15, opacity=0).set_pos(("right", "top")).set_opacity(0.8))
+                    # دمج اللوجو بالشفافية الجديدة المأخوذة من السلايدر بدون اللطعة السمرا
+                    logo = (ImageClip(config.ACTIVE_LOGO_PATH)
+                            .set_duration(modified_clip.duration)
+                            .resize(height=55)
+                            .margin(right=15, top=15, opacity=0)
+                            .set_pos(("right", "top"))
+                            .set_opacity(logo_opacity))
                     final_clip = CompositeVideoClip([modified_clip, logo])
                 else: final_clip = modified_clip
                 
                 final_clip.write_videofile(output_path, codec="libx264", audio_codec="aac", preset="ultrafast", threads=4)
                 clip.close()
                 final_clip.close()
-                st.success("🎉 تم معالجة وتشفير الفيديو بنجاح!")
+                st.success("🎉 تم معالجة وتصحيح كادر الفيديو وحجب علامات المنصات بنجاح!")
                 st.video(output_path)
             except Exception as e: st.error(f"حدث خطأ: {str(e)}")
 
-# ==================== التبويب الثاني ====================
+# ==================== التبويب الثاني (المونتاج المتعدد المطور) ====================
 with tab2:
     st.subheader("🖼️ مصنع تجميل صور المنتجات والأسطمبات الفورية لـ Montgk")
     uploaded_images = st.file_uploader("ارفع صورة أو مجموعة صور للمنتجات هنا ع الماشي:", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
     
     if uploaded_images:
+        # خيارات معالجة الصور الذكية المتعددة بناءً على طلب مستر بو
         if len(uploaded_images) > 1:
-            album_choice = st.radio("⚡ لقطنا مجموعة صور!", ("📥 ألبوم تجميعه صور مفرودة", "🎬 دمجهم فيديو متحرك (Slideshow)"))
-        else: album_choice = "📥 ألبوم تجميعه صور مفرودة"
+            album_choice = st.radio("⚡ لقطنا مجموعة صور! تحب تخرجهم إزاي يا با؟", 
+                                    ("📥 ألبوم صور مفرودة منفصلة", "🎬 دمجهم فيديو متحرك (Slideshow)", "🖼️ تجميع في صورة واحدة (Collage)"))
+        else: 
+            album_choice = "📥 ألبوم صور مفرودة منفصلة"
 
         if st.button("⚙️ ابدأ معالجة وتجميل قالب الصور الحصري"):
             saved_paths = []
             for i, img_file in enumerate(uploaded_images):
                 temp_p = f"temp_product_{i}.png"
                 with open(temp_p, "wb") as f: f.write(img_file.read())
-                processed_p = process_image_template(temp_p, blur_background=blur_bg_opt)
+                # تمرير نسبة الشفافية من السلايدر لمنع اللطعة السمرا
+                processed_p = process_image_template(temp_p, blur_background=blur_bg_opt, opacity_val=logo_opacity)
                 saved_paths.append(processed_p)
                 if os.path.exists(temp_p): os.remove(temp_p)
             
-            if album_choice == "📥 ألبوم تجميعه صور مفرودة":
-                st.success("🎉 تمت الفرمطة وتركيب اللوجو والأسطمبة الشيك!")
-                for idx, p in enumerate(saved_paths): st.image(p, caption=f"🖼️ منتج رقم {idx+1}", use_container_width=True)
+            if album_choice == "📥 ألبوم صور مفرودة منفصلة":
+                st.success("🎉 تمت الفرمطة وتركيب اللوجو الشفاف بنجاح!")
+                for idx, p in enumerate(saved_paths): 
+                    st.image(p, caption=f"🖼️ منتج رقم {idx+1} باللوجو المفرغ", use_container_width=True)
+                    
+            elif album_choice == "🖼️ تجميع في صورة واحدة (Collage)":
+                st.success("🎉 تم دمج الألبوم كله في كادر واحد فخم!")
+                collage_result = create_image_collage(saved_paths)
+                st.image(collage_result, caption="📸 صورة الكولاج الشبكية المجمعة للمنصات", use_container_width=True)
+                
             else:
                 with st.spinner("🎬 جاري نسج الصور في مقطع فيديو..."):
                     img_clips = [ImageClip(p).set_duration(3) for p in saved_paths]
@@ -314,7 +357,7 @@ with tab2:
                     video_slideshow.write_videofile(video_slideshow_path, codec="libx264", fps=24, preset="ultrafast")
                     st.video(video_slideshow_path)
 
-# ==================== التبويب الثالث (مطور بالكامل بناءً على طلبك) ====================
+# ==================== التبويب الثالث (الرادار + إنتاج شيت إكسيل Montgk للمنصات) ====================
 with tab3:
     st.subheader("🛰️ مركز الفحص والـ Forward وإعادة التسعير التلقائي")
     col1, col2 = st.columns(2)
@@ -323,7 +366,6 @@ with tab3:
     fb_profile_link = st.text_input("رابط صفحة الفيسبوك الخاصة بك للتواصل:", value="https://www.facebook.com/montgk1")
     
     st.markdown("#### 🛡️ فلاتر الأمان والحد الأقصى قبل الانطلاق")
-    # تم إلغاء الحد الأدنى تماماً، والحد الأقصى تكتبه يدوي في الواجهة قبل كبسة الانطلاق
     max_price_threshold = st.number_input(
         "اكتب الحد الأقصى للسعر المراد قنصه الآن (لتجاهل أرقام الفون والعناوين):", 
         min_value=1, 
@@ -361,7 +403,6 @@ with tab3:
                                     if match: photo_url = match.group(1)
                                 if photo_url and photo_url.startswith('//'): photo_url = 'https:' + photo_url
                                     
-                                # تمرير الحد الأقصى المكتوب في الخانة للفلتر فوراً
                                 auto_price, old_str = extract_original_price_only(p_text, max_limit=max_price_threshold)
                                 temp_collected.append({"text": p_text, "image": photo_url, "auto_price": auto_price, "old_str": old_str})
                         st.session_state["cached_posts"] = temp_collected
@@ -374,12 +415,44 @@ with tab3:
                 auto_price, old_str = extract_original_price_only(forwarded_text, max_limit=max_price_threshold)
                 st.session_state["cached_posts"] = [{"text": forwarded_text, "image": uploaded_image, "auto_price": auto_price, "old_str": old_str}]
 
+    # --- ميزة إنشاء شيت إكسيل Montgk النظيف للمنصات ---
     if st.session_state["cached_posts"]:
+        st.write("---")
+        if st.button("📊 صناعة وتوليد شيت إكسيل Montgk الملكي للمنصات"):
+            excel_data_list = []
+            for i, item in enumerate(st.session_state["cached_posts"]):
+                excel_data_list.append({
+                    "رقم المنتج": i + 1,
+                    "اسم الصورة المائية": f"watermarked_product_{i+1}.jpg",
+                    "اسم المنتج (فارغ)": "",
+                    "السعر (فارغ)": "",
+                    "الوصف (فارغ)": ""
+                })
+            
+            df_excel = pd.DataFrame(excel_data_list)
+            output_io = io.BytesIO()
+            with pd.ExcelWriter(output_io, engine='openpyxl') as writer:
+                df_excel.to_excel(writer, index=False, sheet_name="Montgk - منتجك")
+                workbook = writer.book
+                worksheet = writer.sheets["Montgk - منتجك"]
+                worksheet.insert_rows(1, amount=2)
+                worksheet["A1"] = "👑 Montgk - مُنتجك براند"
+                worksheet["A2"] = "😎 Designed By: Mr:-Bo0"
+                
+            final_excel_bytes = output_io.getvalue()
+            st.success("✅ الشيت النظيف اتعمل وجاهز لرفعه على المنصات يا با!")
+            st.download_button(
+                label="📥 تحميل ملف Excel الآن",
+                data=final_excel_bytes,
+                file_name="Montgk_Platform_Products.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+        st.write("---")
+
         for idx, item in enumerate(st.session_state["cached_posts"]):
             st.markdown(f"#### 📦 منتج رقم {idx + 1}")
             if item["image"]: st.image(item["image"], width=250)
             
-            # السعر الأصلي ملوش حد أدنى مقيد (min_value=0) عشان يفتح معاك أي تعديل يدوي حر
             chosen_orig_price = st.number_input(
                 f"✍️ السعر الأصلي لمنتج {idx+1} (تعديل يدوي مفتوح):", 
                 min_value=0, max_value=2000000000, value=int(item["auto_price"]), key=f"manual_price_{idx}"
