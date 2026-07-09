@@ -17,18 +17,19 @@ import yt_dlp
 import io
 import pandas as pd
 
-# استدعاء ملف الكونفيج
+# استدعاء ملف الكونفيج المطور
 import config
 
-# إعدادات المنصة المتقدمة
 st.set_page_config(page_title=config.PAGE_TITLE, page_icon=config.PAGE_ICON, layout="centered")
+
+# مزامنة وتحميل القنوات الذكية من الكونفيج
+current_channels = config.load_and_sync_channels()
 
 if not os.path.exists(config.DEFAULT_LOGO_PATH):
     Image.new('RGBA', (200, 200), color=(255, 75, 75, 255)).save(config.DEFAULT_LOGO_PATH)
 if not os.path.exists(config.ACTIVE_LOGO_PATH):
     Image.open(config.DEFAULT_LOGO_PATH).save(config.ACTIVE_LOGO_PATH)
 
-# استايل التنسيق المودرن الداكن لبراند مــنتــجـك
 st.markdown("""
     <style>
     .main { background-color: #0e1117; }
@@ -53,13 +54,9 @@ st.markdown(f"""
     <div class="web-banner">
         <div class="banner-title">🥷 Mr:- Bo0</div>
         <div class="banner-subtitle">{config.BRAND_NAME_AR}</div>
-        <div class="banner-footer">🛸 Bo0'sViDClone V9.5 Trend & Style Edition</div>
+        <div class="banner-footer">🛸 Bo0'sViDClone V9.6 Time & Trend Master</div>
     </div>
 """, unsafe_allow_html=True)
-
-if not os.path.exists(config.TMP_DIR): os.makedirs(config.TMP_DIR)
-if not os.path.exists(config.CHANNELS_FILE):
-    with open(config.CHANNELS_FILE, "w") as f: json.dump(["Baghdadi011"], f)
 
 def get_arabic_font(font_size=24):
     font_path = os.path.join(config.TMP_DIR, "Cairo-Bold.ttf")
@@ -72,38 +69,26 @@ def get_arabic_font(font_size=24):
     try: return ImageFont.truetype(font_path, font_size)
     except: return None
 
-# دالة ذكية لتوليد نص لولبي/موجي احترافي لـ Montgk Brand
 def draw_wavy_text(draw, text, start_x, start_y, font, fill_color):
     current_x = start_x
     for i, char in enumerate(text):
-        # معادلة جيبية لتوليد انحناء لولبي فخم (Wavy Path)
         amplitude = 6 
         frequency = 0.4
         offset_y = int(amplitude * math.sin(frequency * i))
-        
-        # رسم الضل الخفيف للشياكة
         draw.text((current_x + 1, start_y + offset_y + 1), char, fill=(0, 0, 0, 150), font=font)
-        # رسم النص الأساسي
         draw.text((current_x, start_y + offset_y), char, fill=fill_color, font=font)
-        
-        # حساب المسافة الشفافة للحرف التالي لضمان عدم التداخل
         char_w = font.getmask(char).getbbox()[2] if font.getmask(char).getbbox() else 12
         current_x += char_w + 4
 
-# دالة تنظيف النص واقتراح الوصف الذكي التسويقي
 def generate_smart_ai_description(raw_text):
-    # 1. تنظيف الداتا القديمة (مسح روابط، هاشتاجات، تليفونات، وعناوين)
     clean = re.sub(r'http[s]?://\S+|www\.\S+', '', raw_text)
     clean = re.sub(r'#\w+', '', clean)
     clean = re.sub(r'01[0125]\d{8}', '', clean)
     clean = re.sub(r'\d+\s*(?:شارع|طريق|ميدان|دور|شقة|مكرر)', '', clean)
-    
-    # مسح السعر القديم لو اتوجد كأرقام مجردة منعاً للغبطة
     words = clean.split()
     useful_words = [w for w in words if not w.isdigit()]
-    base_description = " ".join(useful_words[:25]) # قنص الكلمات المفتاحية للبضاعة
+    base_description = " ".join(useful_words[:25])
     
-    # صياغة الاقتراح الذكي الفخم
     smart_proposal = (
         f"✨ **اللقطة اللي مستنيها وصلت!** ✨\n"
         f"🔥 {base_description} 🔥\n"
@@ -111,12 +96,10 @@ def generate_smart_ai_description(raw_text):
     )
     return smart_proposal
 
-# دالة مطورة لمعالجة الصور بالبلور الخفيف والأسلوب اللولبي وحجب لوجوهات المنصات
 def process_image_template(image_path, blur_background=False, opacity_val=0.8):
     img = Image.open(image_path).convert("RGBA")
     w, h = img.size
     
-    # تخفيف البلور لـ 3 ليعطي لمسة شياكة بدون التغطية على البضاعة
     if blur_background:
         blurred_img = img.filter(ImageFilter.GaussianBlur(radius=3))
         mask = Image.new("L", (w, h), 0)
@@ -127,14 +110,11 @@ def process_image_template(image_path, blur_background=False, opacity_val=0.8):
 
     draw = ImageDraw.Draw(img)
 
-    # حيلة حجب لوجوهات المنصات والمستوردين (طباعة غطاء شبكي شفاف وأنيق بالزوايا)
-    # زاوية يمين فوق وزاوية شمال تحت (أماكن لوجو تيك توك وكوايي الشهيرة)
     shield_font = get_arabic_font(12)
     if shield_font:
         draw.text((15, 20), "ORIGINAL BRAND", fill=(255, 255, 255, 60), font=shield_font)
         draw.text((w - 140, h - 35), "PREMIUM QUALITY", fill=(255, 255, 255, 60), font=shield_font)
 
-    # سحب وحقن لوجو براند منتجك بالشفافية المطلوبة
     if os.path.exists(config.ACTIVE_LOGO_PATH):
         logo = Image.open(config.ACTIVE_LOGO_PATH).convert("RGBA")
         logo.thumbnail((int(w*0.22), int(h*0.12)))
@@ -143,7 +123,6 @@ def process_image_template(image_path, blur_background=False, opacity_val=0.8):
         logo_transparent = Image.merge("RGBA", (r, g, b, a))
         img.paste(logo_transparent, (w - logo.size[0] - 15, 15), logo_transparent)
         
-    # طباعة كلمة Montgk Brand بالأسلوب اللولبي الفخم
     try:
         current_brand_text = st.session_state.get("dynamic_brand_text", "Montgk Brand")
         arabic_font = get_arabic_font(int(h * 0.035) if h > 500 else 18)
@@ -205,15 +184,13 @@ def download_from_link(url):
     with yt_dlp.YoutubeDL(ydl_opts) as ydl: ydl.download([url])
     return output_template
 
-# ==================== 🛠️ لوحة التحكم الجانبية الذكية ومجهر الترند ====================
+# ==================== 🛠️ لوحة التحكم الجانبية والترند ====================
 with st.sidebar:
     st.markdown("<h2 style='color:#ff4b4b;'>🛰️ ترسانة السيطرة والتوقيت</h2>", unsafe_allow_html=True)
     
-    # 🌟 ميزة قنص وفحص الترندات الفورية لعام 2026 بناءً ع طلبك 🌟
     st.markdown("### 📈 رادار الترندات والكلمات الأكثر مبيعاً")
     if st.button("🔍 فحص ترندات المنصات اليوم"):
         st.info("🔥 المنتجات الأكثر بحثاً: منظمات مطبخ تركي، سبرتاية كهربا مودرن، كوتشيات مستوردة فيتنامي.")
-        st.caption("💡 نصيحة Mr:- Bo0: استخدم الكلمات دي في عناوين شيت الإكسيل لزيادة المبيعات والظهور!")
         
     st.write("---")
     st.markdown("### 🎨 إعدادات الشفافية واللوجو الحية")
@@ -225,7 +202,7 @@ with st.sidebar:
     uploaded_logo = st.file_uploader("ارفع صورة لوجو جديدة للموقع:", type=["png", "jpg", "jpeg"])
     if uploaded_logo is not None:
         Image.open(uploaded_logo).save(config.ACTIVE_LOGO_PATH)
-        st.success("✅ تم حفظ وتثبيت اللوجو الجديد بنجاح في السيرفر!")
+        st.success("✅ تم حفظ وتثبيت اللوجو الجديد بنجاح!")
         st.rerun()
 
     st.write("---")
@@ -236,28 +213,27 @@ with st.sidebar:
     input_brand_text = st.text_input("غير كلمة الـ Watermark البديلة هنا:", value=st.session_state["dynamic_brand_text"])
     if input_brand_text != st.session_state["dynamic_brand_text"]:
         st.session_state["dynamic_brand_text"] = input_brand_text
-        st.success("📝 تم تحديث كلمة البراند على الصور فوراً!")
+        st.success("📝 تم تحديث كلمة البراند!")
         st.rerun()
 
     st.write("---")
     video_duration_choice = st.selectbox("اختر مدة رندرة الفيديو القصيرة:", ("20 ثانية (أسرع رندرة للـ Reels)", "30 ثانية (مثالي للشورتس)", "60 ثانية (دقيقة كاملة)", "الفيديو كامل (حد أقصى 5 دقائق)"))
-    use_custom_audio = st.checkbox(f"دمج تراك الصوت الحصري ({config.CUSTOM_AUDIO_TRACK})", value=True)
-    st.write("---")
+    use_custom_audio = st.checkbox(f"دمج تراك الصوت الحصري", value=True)
     blur_bg_opt = st.checkbox("تفعيل تأثير الـ Blur الاحترافي لعزل الخلفية", value=True)
+    
     st.write("---")
-    new_ch = st.text_input("أدخل معرف قناة تليجرام جديدة:", placeholder="Baghdadi011")
-    if st.button("➕ تسجيل وتشغيل الرادار"):
-        with open(config.CHANNELS_FILE, "r") as f: current_channels = json.load(f)
+    new_ch = st.text_input("أدخل معرف قناة تليجرام جديدة:")
+    if st.button("➕ تسجيل وتشغيل الرادار للملف"):
         if new_ch and new_ch not in current_channels:
             current_channels.append(new_ch.replace("@", "").strip())
-            with open(config.CHANNELS_FILE, "w") as f: json.dump(current_channels, f)
-            st.success("✅ القناة دخلت تحت مجهر الرادار لايف!")
-
-with open(config.CHANNELS_FILE, "r") as f: current_channels = json.load(f)
+            with open(config.CHANNELS_FILE, "w", encoding="utf-8") as f:
+                json.dump(current_channels, f, ensure_ascii=False, indent=4)
+            st.success("✅ القناة اتحفظت في ملف الـ JSON ومش هتطير!")
+            st.rerun()
 
 tab1, tab2, tab3 = st.tabs(["🎬 تشفير ومونتاج الفيديو", "🖼️ قالب ألبومات وصور المنتجات", "🛰️ رادار القنوات والـ Forward"])
 
-# ==================== التبويب الأول (الفيديو بدون قلب وإلغاء العلامات) ====================
+# ==================== التبويب الأول (الفيديو) ====================
 with tab1:
     st.subheader("🚀 منصة هندسة وبصمة الفيديو وحذف اللوجوهات القديمة")
     option = st.radio("اختر طريقة إدخال مقطع الفيديو:", ("لصق رابط فيديو (يوتيوب، فيسبوك، تيك توك)", "رفع ملف فيديو مباشر من جهازك"), key="vid_option")
@@ -269,7 +245,7 @@ with tab1:
         url = st.text_input("ضع رابط الفيديو هنا:", placeholder="https://...", key="vid_url")
         if url and re.match(r'http[s]?://', url):
             if st.button("🚀 ابدأ المعالجة وضخ تراك الصوت الحصري"):
-                with st.spinner("جاري سحب المحتوى..."):
+                with St.spinner("جاري سحب المحتوى..."):
                     try:
                         downloaded_file = download_from_link(url)
                         if os.path.exists(input_path): os.remove(input_path)
@@ -294,7 +270,6 @@ with tab1:
                 else:
                     if clip.duration > 300: clip = clip.subclip(0, 300)
                 
-                # --- شيلنا الـ mirror_x عشان الكلام يظهر مظبوط وما يتعكسش ---
                 modified_clip = clip.fx(vfx.crop, x1=5, y1=5, x2=clip.w-5, y2=clip.h-5)
                 modified_clip = modified_clip.fx(vfx.colorx, 1.05)
                 
@@ -342,12 +317,12 @@ with tab2:
                 if os.path.exists(temp_p): os.remove(temp_p)
             
             if album_choice == "📥 ألبوم صور مفرودة منفصلة":
-                st.success("🎉 تمت الفرمطة وتركيب اللوجو الشفاف بنجاح!")
+                st.success("🎉 تمت الفرمطة وتركيب اللوجو بنجاح!")
                 for idx, p in enumerate(saved_paths): 
-                    st.image(p, caption=f"🖼️ منتج رقم {idx+1} باللوجو والخط اللولبي الشيك", use_container_width=True)
+                    st.image(p, caption=f"🖼️ منتج رقم {idx+1}", use_container_width=True)
                     
             elif album_choice == "🖼️ تجميع في صورة واحدة (Collage)":
-                st.success("🎉 تم دمج الألبوم كله في كادر واحد فخم بدون التأثير ع المنتج!")
+                st.success("🎉 تم دمج الألبوم كله في كادر واحد فخم!")
                 collage_result = create_image_collage(saved_paths)
                 st.image(collage_result, caption="📸 صورة الكولاج الشبكية المجمعة للمنصات", use_container_width=True)
                 
@@ -361,7 +336,7 @@ with tab2:
                     video_slideshow.write_videofile(video_slideshow_path, codec="libx264", fps=24, preset="ultrafast")
                     st.video(video_slideshow_path)
 
-# ==================== التبويب الثالث (الرادار والوصف الذكي المقترح وشيت الإكسيل) ====================
+# ==================== التبويب الثالث (الرادار والوصف والتوقيت الصارم) ====================
 with tab3:
     st.subheader("🛰️ مركز الفحص والـ Forward وإعادة التسعير التلقائي")
     col1, col2 = st.columns(2)
@@ -372,6 +347,10 @@ with tab3:
     st.markdown("#### 🛡️ فلاتر الأمان والحد الأقصى قبل الانطلاق")
     max_price_threshold = st.number_input("اكتب الحد الأقصى للسعر المراد قنصه الآن:", min_value=1, max_value=9999999, value=5000)
     
+    # 🎯 إرجاع فلتر التوقيت والتاريخ الصارم فوراً لمنع البعبصة واللخبطة 🎯
+    st.markdown("#### 📅 فلتر توقيت سحب البوستات المطلوبة")
+    date_filter = st.radio("اختر النطاق الزمني لقنص البوستات:", ("اليوم فقط", "الأمس واليوم", "كل البوستات المتاحة للقناة"), index=0, horizontal=True)
+    
     st.write("---")
     radar_mode = st.radio("اختر مصدر فحص المحتوى:", ("🛰️ سحب رادار حي وفوري", "📋 إدخل يدوي لبوست معموله Forward"), key="mode_9")
     
@@ -380,7 +359,7 @@ with tab3:
     if radar_mode == "🛰️ سحب رادار حي وفوري":
         target_channel_input = st.selectbox("اختر القناة لالتقاط المنتجات:", current_channels)
         if st.button("🛰️ أطلق الرادار واقنص المحتوى"):
-            with st.spinner("جاري قنص الداتا بالحد الأقصى المطلوب..."):
+            with st.spinner("جاري قنص الداتا بالحد الأقصى وتاريخ الفلتر المطلوب..."):
                 try:
                     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
                     res = requests.get(f"https://t.me/s/{target_channel_input}", headers=headers, timeout=10)
@@ -388,9 +367,22 @@ with tab3:
                         soup = BeautifulSoup(res.content, "html.parser")
                         messages = soup.find_all("div", {"class": "tgme_widget_message_wrap"})
                         temp_collected = []
+                        
+                        current_date_str = datetime.now().strftime("%Y-%m-%d")
+                        yesterday_date_str = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+
                         for msg in reversed(messages):
                             text_div = msg.find("div", {"class": "tgme_widget_message_text"})
-                            if text_div:
+                            time_tag = msg.find("time", {"class": "time"})
+                            
+                            if text_div and time_tag:
+                                datetime_attr = time_tag.get("datetime", "") # ISO Format: 2026-07-09T...
+                                post_date = datetime_attr.split("T")[0] if datetime_attr else ""
+                                
+                                # تشغيل منطق فلتر الوقت الصارم
+                                if date_filter == "اليوم فقط" and post_date != current_date_str: continue
+                                if date_filter == "الأمس واليوم" and post_date not in [current_date_str, yesterday_date_str]: continue
+                                
                                 p_text = text_div.text.strip()
                                 photo_url = None
                                 photo_tag = msg.find("a", {"class": "tgme_widget_message_photo_wrap"})
@@ -447,7 +439,7 @@ with tab3:
             piece_p = round(new_box_price / box_items_count, 1)
             if piece_p.is_integer(): piece_p = int(piece_p)
             
-            # تنظيف النص الأصلي المجلوب من الهاشتاجات واللينكات
+            # تنظيف النص من اللينكات والهاشتاجات تلقائياً لشغل نضيف
             temp_post_text = item["text"]
             temp_post_text = re.sub(r'#\w+', '', temp_post_text)
             temp_post_text = re.sub(r'http[s]?://\S+|www\.\S+', '', temp_post_text)
@@ -457,12 +449,12 @@ with tab3:
             else: 
                 final_clean_text = temp_post_text + f"\n سعر العرض الجديد: {new_box_price} ج"
             
-            # 🌟 نظام اقتراح الوصف الذكي الاختياري بناءً على طلبك 🌟
+            # اقتراح الوصف الذكي الاختياري
             smart_ai_proposal = generate_smart_ai_description(item["text"])
             st.info("💡 **اقتراح الوصف الذكي من الـ AI لمستر بو:**")
             st.caption(smart_ai_proposal)
             
-            # سؤال المستخدم قبل الاعتماد والتبديل
+            # سؤال التفعيل قبل النزول
             apply_ai = st.checkbox("🔄 اعتماد واستخدام الوصف الذكي المقترح بدلاً من النص الأصلي؟", value=False, key=f"ai_check_{idx}")
             
             chosen_description = smart_ai_proposal if apply_ai else final_clean_text
