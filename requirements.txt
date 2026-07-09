@@ -11,3 +11,5 @@ imageio
 imageio-ffmpeg
 openpyxl
 python-telegram-bot==20.8
+telethon
+pandas
