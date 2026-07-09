@@ -54,7 +54,7 @@ st.markdown(f"""
     <div class="web-banner">
         <div class="banner-title">🥷 Mr:- Bo0</div>
         <div class="banner-subtitle">{config.BRAND_NAME_AR}</div>
-        <div class="banner-footer">🛸 Bo0'sViDClone V9.6 Time & Trend Master</div>
+        <div class="banner-footer">🛸 Bo0'sViDClone V9.7 Target Locked</div>
     </div>
 """, unsafe_allow_html=True)
 
@@ -245,7 +245,7 @@ with tab1:
         url = st.text_input("ضع رابط الفيديو هنا:", placeholder="https://...", key="vid_url")
         if url and re.match(r'http[s]?://', url):
             if st.button("🚀 ابدأ المعالجة وضخ تراك الصوت الحصري"):
-                with St.spinner("جاري سحب المحتوى..."):
+                with st.spinner("جاري سحب المحتوى..."):
                     try:
                         downloaded_file = download_from_link(url)
                         if os.path.exists(input_path): os.remove(input_path)
@@ -347,9 +347,9 @@ with tab3:
     st.markdown("#### 🛡️ فلاتر الأمان والحد الأقصى قبل الانطلاق")
     max_price_threshold = st.number_input("اكتب الحد الأقصى للسعر المراد قنصه الآن:", min_value=1, max_value=9999999, value=5000)
     
-    # 🎯 إرجاع فلتر التوقيت والتاريخ الصارم فوراً لمنع البعبصة واللخبطة 🎯
+    # 🎯 تحديث فلتر التوقيت الشامل (اليوم - الأمس - قبل أمس - كل البوستات) بناءً على طلبك
     st.markdown("#### 📅 فلتر توقيت سحب البوستات المطلوبة")
-    date_filter = st.radio("اختر النطاق الزمني لقنص البوستات:", ("اليوم فقط", "الأمس واليوم", "كل البوستات المتاحة للقناة"), index=0, horizontal=True)
+    date_filter = st.radio("اختر النطاق الزمني لقنص البوستات:", ("اليوم فقط", "الأمس واليوم", "قبل أمس والـ 3 أيام الأخيرة", "كل البوستات المتاحة للقناة"), index=3, horizontal=True)
     
     st.write("---")
     radar_mode = st.radio("اختر مصدر فحص المحتوى:", ("🛰️ سحب رادار حي وفوري", "📋 إدخل يدوي لبوست معموله Forward"), key="mode_9")
@@ -361,31 +361,52 @@ with tab3:
         if st.button("🛰️ أطلق الرادار واقنص المحتوى"):
             with st.spinner("جاري قنص الداتا بالحد الأقصى وتاريخ الفلتر المطلوب..."):
                 try:
-                    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-                    res = requests.get(f"https://t.me/s/{target_channel_input}", headers=headers, timeout=10)
+                    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+                    res = requests.get(f"https://t.me/s/{target_channel_input}", headers=headers, timeout=12)
                     if res.status_code == 200:
                         soup = BeautifulSoup(res.content, "html.parser")
-                        messages = soup.find_all("div", {"class": "tgme_widget_message_wrap"})
+                        
+                        # سحب موسع عشان لو تليجرام غير الكلاسات يلقطها برضه وميهنجش
+                        messages = soup.find_all("div", class_=lambda x: x and 'tgme_widget_message_wrap' in x)
+                        if not messages:
+                            messages = soup.find_all("div", {"class": "tgme_widget_message_wrap"})
+                            
                         temp_collected = []
                         
-                        current_date_str = datetime.now().strftime("%Y-%m-%d")
-                        yesterday_date_str = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+                        # حساب التواريخ ديناميكياً
+                        now = datetime.now()
+                        today_str = now.strftime("%Y-%m-%d")
+                        yesterday_str = (now - timedelta(days=1)).strftime("%Y-%m-%d")
+                        before_yesterday_str = (now - timedelta(days=2)).strftime("%Y-%m-%d")
+                        three_days_ago_str = (now - timedelta(days=3)).strftime("%Y-%m-%d")
 
                         for msg in reversed(messages):
+                            # البحث عن النص بأكتر من كلاس احتياطي لضمان السحب 100%
                             text_div = msg.find("div", {"class": "tgme_widget_message_text"})
-                            time_tag = msg.find("time", {"class": "time"})
-                            
-                            if text_div and time_tag:
-                                datetime_attr = time_tag.get("datetime", "") # ISO Format: 2026-07-09T...
-                                post_date = datetime_attr.split("T")[0] if datetime_attr else ""
+                            if not text_div:
+                                text_div = msg.find("div", class_=lambda x: x and 'message_text' in x)
                                 
-                                # تشغيل منطق فلتر الوقت الصارم
-                                if date_filter == "اليوم فقط" and post_date != current_date_str: continue
-                                if date_filter == "الأمس واليوم" and post_date not in [current_date_str, yesterday_date_str]: continue
+                            time_tag = msg.find("time")
+                            
+                            if text_div:
+                                # لو مفيش تايم تاج، بنعتبره بوست لسة نازل حالا عشان ميتفوتش
+                                post_date = today_str
+                                if time_tag:
+                                    datetime_attr = time_tag.get("datetime", "")
+                                    if datetime_attr:
+                                        post_date = datetime_attr.split("T")[0]
+                                
+                                # تطبيق فلاتر الوقت الموسعة الجديدة بدون بعبصة
+                                if date_filter == "اليوم فقط" and post_date != today_str: continue
+                                if date_filter == "الأمس واليوم" and post_date not in [today_str, yesterday_str]: continue
+                                if date_filter == "قبل أمس والـ 3 أيام الأخيرة" and post_date not in [today_str, yesterday_str, before_yesterday_str, three_days_ago_str]: continue
                                 
                                 p_text = text_div.text.strip()
                                 photo_url = None
                                 photo_tag = msg.find("a", {"class": "tgme_widget_message_photo_wrap"})
+                                if not photo_tag:
+                                    photo_tag = msg.find("a", class_=lambda x: x and 'message_photo' in x)
+                                    
                                 if photo_tag:
                                     style = photo_tag.get("style", "")
                                     match = re.search(r"url\(['\"]?(.*?)['\"]?\)", style)
@@ -394,8 +415,15 @@ with tab3:
                                     
                                 auto_price, old_str = extract_original_price_only(p_text, max_limit=max_price_threshold)
                                 temp_collected.append({"text": p_text, "image": photo_url, "auto_price": auto_price, "old_str": old_str})
+                        
                         st.session_state["cached_posts"] = temp_collected
-                except Exception as e: st.error(f"خطأ في الرادار: {str(e)}")
+                        if not temp_collected:
+                            st.warning("⚠️ الرادار فتح القناة بس ملحقش بوستات مطابقة لفلتر الوقت المختار، جرب تختار 'كل البوستات المتاحة للقناة'.")
+                        else:
+                            st.success(f"🎯 الرادار قنص {len(temp_collected)} بوست بنجاح مية مية!")
+                    else:
+                        st.error(f"❌ تليجرام رافض الاستجابة حالياً، كود الخطأ: {res.status_code}")
+                except Exception as e: st.error(f"خطأ غير متوقع في الرادار: {str(e)}")
     else:
         forwarded_text = st.text_area("الزق نص البوست الـ Forward هنا:")
         uploaded_image = st.file_uploader("📥 ارفع صورة المنتج المصاحبة:")
