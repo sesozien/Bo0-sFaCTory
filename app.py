@@ -54,7 +54,7 @@ st.markdown(f"""
     <div class="web-banner">
         <div class="banner-title">🥷 Mr:- Bo0</div>
         <div class="banner-subtitle">{config.BRAND_NAME_AR}</div>
-        <div class="banner-footer">🛸 Bo0'sViDClone V10.0 Pro Custom Template</div>
+        <div class="banner-footer">🛸 Bo0'sViDClone V10.6 Clean Text Edition</div>
     </div>
 """, unsafe_allow_html=True)
 
@@ -121,7 +121,6 @@ def process_image_template(image_path, blur_background=False, blur_intensity=3, 
 
     if os.path.exists(config.ACTIVE_LOGO_PATH):
         logo = Image.open(config.ACTIVE_LOGO_PATH).convert("RGBA")
-        # التحكم في حجم اللوجو ديناميكياً
         logo.thumbnail((int(w * logo_scale), int(h * (logo_scale * 0.55))))
         r, g, b, a = logo.split()
         a = a.point(lambda p: int(p * opacity_val))
@@ -135,7 +134,6 @@ def process_image_template(image_path, blur_background=False, blur_intensity=3, 
         else:
             full_brand_text = base_brand_text
 
-        # التحكم في حجم الخط ديناميكياً بناء على اختيار السيليدر لقوة التكبير والتصغير
         calc_font_size = int(h * text_scale) if h > 500 else int(18 * (text_scale / 0.035))
         if calc_font_size < 12: calc_font_size = 12
         
@@ -165,6 +163,17 @@ def create_image_collage(image_paths):
     out_collage_path = os.path.join(config.TMP_DIR, "montgk_collage_output.jpg")
     collage_img.save(out_collage_path, "JPEG", quality=95)
     return out_collage_path
+
+def check_if_single_piece_text(text):
+    single_piece_keywords = [
+        "سعر القطعه", "سعر القطعة", "سعر الحته", "سعر الحتة", 
+        "السعر للقطعه", "السعر للقطعة", "السعر للحته", "السعر للحتة", 
+        "الواحدة", "سعر الواحدة"
+    ]
+    for kw in single_piece_keywords:
+        if kw in text:
+            return True
+    return False
 
 def extract_original_price_only(text, max_limit=None):
     clean_text = re.sub(r'01[0125]\d{8}', '', text)
@@ -211,7 +220,6 @@ with st.sidebar:
     st.write("---")
     st.markdown("### 🖼️ هندسة قوالب الصور والبلور الاحترافي")
     
-    # التحكم في تشغيل وقوة البلور بالكامل
     blur_bg_opt = st.checkbox("تفعيل تأثير الـ Blur لعزل خلفية الصور", value=True)
     blur_intensity_val = st.slider("درجة قوة تغبيش البلور (Blur Intensity):", min_value=1, max_value=15, value=4, step=1)
     
@@ -219,11 +227,9 @@ with st.sidebar:
     st.markdown("### 🎨 ألوان وتكبير وتصغير اللوجو والكلمة المطبوعة")
     logo_opacity = st.slider("درجة شفافية اللوجو المائي:", min_value=0.1, max_value=1.0, value=0.8, step=0.05)
     
-    # 🎯 سيليدرات تحكم حية وفورية في الحجم التلقائي للوجو والخط
     live_logo_size = st.slider("حجم لوجو القالب التلقائي (Logo Scale):", min_value=0.05, max_value=0.50, value=0.22, step=0.02)
     live_text_size = st.slider("حجم خط الكلمة المطبوعة (Text Scale):", min_value=0.015, max_value=0.080, value=0.035, step=0.005)
     
-    # التحكم في اللون (الافتراضي دهبي ملكي فخم ليتماشى مع طلبك)
     custom_text_color = st.color_picker("اختر لون كلمة البراند المكتوبة (افتراضي ذهبي):", value="#FFD700")
 
     if os.path.exists(config.ACTIVE_LOGO_PATH):
@@ -246,7 +252,6 @@ with st.sidebar:
         st.success("📝 تم تحديث كلمة البراند!")
         st.rerun()
 
-    # ➕ حقل إضافة نص مخصص مع كلمة منتجك براند بناءً على طلبك
     extra_brand_suffix = st.text_input("أضف كلمة أو جملة مخصصة بجانب البراند (اختياري):", value="", placeholder="مثال: Premium Quality")
 
     st.write("---")
@@ -327,7 +332,7 @@ with tab1:
                 st.video(output_path)
             except Exception as e: st.error(f"حدث خطأ: {str(e)}")
 
-# ==================== التبويب الثاني (قوالب الصور والـ Collage الشيك) ====================
+# ==================== التبويب الثاني (قوالب الصور) ====================
 with tab2:
     st.subheader("🖼️ مصنع تجميل صور المنتجات والأسطمبات الفورية لـ Montgk")
     uploaded_images = st.file_uploader("ارفع صورة أو مجموعة صور للمنتجات هنا ع الماشي:", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
@@ -345,7 +350,6 @@ with tab2:
                 temp_p = f"temp_product_{i}.png"
                 with open(temp_p, "wb") as f: f.write(img_file.read())
                 
-                # تمرير كافة إعدادات لوحة التحكم الجانبية الحية والجديدة
                 processed_p = process_image_template(
                     temp_p, 
                     blur_background=blur_bg_opt, 
@@ -379,18 +383,17 @@ with tab2:
                     video_slideshow.write_videofile(video_slideshow_path, codec="libx264", fps=24, preset="ultrafast")
                     st.video(video_slideshow_path)
 
-# ==================== التبويب الثالث (الرادار والوصف والتوقيت الفعلي) ====================
+# ==================== التبويب الثالث (الرادار والوصف والتسعير الذكي) ====================
 with tab3:
     st.subheader("🛰️ مركز الفحص والـ Forward وإعادة التسعير التلقائي")
     col1, col2 = st.columns(2)
     with col1: price_inc_rate = st.number_input("نسبة زيادة السعر الخاصة بك (%):", min_value=0, max_value=100, value=config.DEFAULT_PRICE_INC_RATE)
-    with col2: box_items_count = st.number_input("عدد القطع داخل العلبة لحساب القطعة جملة:", min_value=1, max_value=100, value=config.DEFAULT_BOX_ITEMS_COUNT)
+    with col2: box_items_count = st.number_input("عدد القطع داخل العلبة (لو كان البوست يحمل سعر بوكس كامل):", min_value=1, max_value=100, value=config.DEFAULT_BOX_ITEMS_COUNT)
     fb_profile_link = st.text_input("رابط صفحة الفيسبوك الخاصة بك للتواصل:", value="https://www.facebook.com/montgk1")
     
     st.markdown("#### 🛡️ فلاتر الأمان والحد الأقصى قبل الانطلاق")
     max_price_threshold = st.number_input("اكتب الحد الأقصى للسعر المراد قنصه الآن:", min_value=1, max_value=9999999, value=5000)
     
-    # فلاتر توقيت السيستم والبرنامج الحقيقي
     st.markdown("#### 📅 فلتر توقيت سحب البوستات المطلوبة (تاريخ السيستم والبرنامج الحقيقي)")
     date_filter = st.radio("اختر النطاق الزمني لقنص البوستات:", ("اليوم فقط", "الأمس واليوم", "قبل أمس والـ 3 أيام الأخيرة", "كل البوستات المتاحة للقناة"), index=3, horizontal=True)
     
@@ -415,7 +418,6 @@ with tab3:
                             
                         temp_collected = []
                         
-                        # حساب تواريخ البرنامج وسيستم الجهاز الفعلي
                         now = datetime.now()
                         today_date = now.date()
                         yesterday_date = today_date - timedelta(days=1)
@@ -430,7 +432,6 @@ with tab3:
                             time_tag = msg.find("time")
                             
                             if text_div:
-                                # قراءة تاريخ السيستم للبوست من الـ timestamp الفعلي لتليجرام وليس من النص
                                 post_date = today_date
                                 if time_tag and time_tag.get("datetime"):
                                     try:
@@ -439,9 +440,8 @@ with tab3:
                                     except:
                                         pass
                                 
-                                # تصفية دقيقة مبنية على تاريخ البرنامج والسيستم الحقيقي
                                 if date_filter == "اليوم فقط" and post_date != today_date: continue
-                                if date_filter == "الأمس واليوم" and post_date not in [today_date, yesterday_date]: continue
+                                if date_filter == "الأمس والوقت" and post_date not in [today_date, yesterday_date]: continue
                                 if date_filter == "قبل أمس والـ 3 أيام الأخيرة" and post_date not in [today_date, yesterday_date, before_yesterday_date, three_days_ago_date]: continue
                                 
                                 p_text = text_div.text.strip()
@@ -475,7 +475,6 @@ with tab3:
                 auto_price, old_str = extract_original_price_only(forwarded_text, max_limit=max_price_threshold)
                 st.session_state["cached_posts"] = [{"text": forwarded_text, "image": uploaded_image, "auto_price": auto_price, "old_str": old_str}]
 
-    # --- صناعة شيت إكسيل Montgk الملكي للمنصات ---
     if st.session_state["cached_posts"]:
         st.write("---")
         if st.button("📊 صناعة وتوليد شيت إكسيل Montgk الملكي للمنصات"):
@@ -501,38 +500,47 @@ with tab3:
             st.markdown(f"#### 📦 منتج رقم {idx + 1}")
             if item["image"]: st.image(item["image"], width=250)
             
+            is_single_piece = check_if_single_piece_text(item["text"])
+            
+            if is_single_piece:
+                st.warning("🎯 محرك الأسعار لقط تلقائياً إن السعر ده لـ (قطعة منفردة/واحدة) ومش سعر بوكس كامل!")
+            
             chosen_orig_price = st.number_input(
-                f"✍️ السعر الأصلي لمنتج {idx+1}:", 
+                f"✍️ السعر الأصلي المكتشف لمنتج {idx+1}:", 
                 min_value=0, max_value=2000000000, value=int(item["auto_price"]), key=f"manual_price_{idx}"
             )
             
-            new_box_price = int(chosen_orig_price * (1 + (price_inc_rate / 100)))
-            piece_p = round(new_box_price / box_items_count, 1)
-            if piece_p.is_integer(): piece_p = int(piece_p)
+            base_new_price = int(chosen_orig_price * (1 + (price_inc_rate / 100)))
             
-            # تنظيف النص من اللينكات والهاشتاجات تلقائياً لشغل نضيف
+            # تم حذف عبارة "داخل البوكس" نهائياً لتصبح الصياغة نظيفة ومباشرة لراحة زبونك
+            if is_single_piece:
+                piece_p = base_new_price
+                estimated_box_price = base_new_price * box_items_count
+                price_status_note = f"📌 سعر القطعة واصل عليك بـ {piece_p} ج بس! 🔥 (سعر العلبة الكاملة جملة تقريبي: {estimated_box_price} ج)"
+            else:
+                piece_p = round(base_new_price / box_items_count, 1)
+                if piece_p.is_integer(): piece_p = int(piece_p)
+                price_status_note = f"📌 سعر القطعة واصل عليك بـ {piece_p} ج بس! 🔥"
+            
             temp_post_text = item["text"]
             temp_post_text = re.sub(r'#\w+', '', temp_post_text)
             temp_post_text = re.sub(r'http[s]?://\S+|www\.\S+', '', temp_post_text)
             
             if item["old_str"] and item["old_str"] in temp_post_text:
-                final_clean_text = temp_post_text.replace(item["old_str"], str(new_box_price), 1)
+                final_clean_text = temp_post_text.replace(item["old_str"], str(base_new_price), 1)
             else: 
-                final_clean_text = temp_post_text + f"\n سعر العرض الجديد: {new_box_price} ج"
+                final_clean_text = temp_post_text + f"\n سعر العرض الجديد: {base_new_price} ج"
             
-            # اقتراح الوصف الذكي الاختياري
             smart_ai_proposal = generate_smart_ai_description(item["text"])
             st.info("💡 **اقتراح الوصف الذكي من الـ AI لمستر بو:**")
             st.caption(smart_ai_proposal)
             
-            # سؤال التفعيل قبل النزول
             apply_ai = st.checkbox("🔄 اعتماد واستخدام الوصف الذكي المقترح بدلاً من النص الأصلي؟", value=False, key=f"ai_check_{idx}")
-            
             chosen_description = smart_ai_proposal if apply_ai else final_clean_text
             
             final_commercial_post = (
                 f"{chosen_description}\n\n"
-                f"📌 (سعر القطعة داخل البوكس واصل عليك بـ {piece_p} ج بس! 🔥)\n\n"
+                f"{price_status_note}\n\n"
                 f"🎁 **خصم خاص للكميات وأصحاب المحلات!** 💣🔥\n\n"
                 f"🔗 للتواصل وطلب المنتج كاش فوراً: {fb_profile_link}"
             )
