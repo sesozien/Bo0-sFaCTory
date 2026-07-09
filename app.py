@@ -54,7 +54,7 @@ st.markdown(f"""
     <div class="web-banner">
         <div class="banner-title">🥷 Mr:- Bo0</div>
         <div class="banner-subtitle">{config.BRAND_NAME_AR}</div>
-        <div class="banner-footer">🛸 Bo0'sViDClone V9.7 Target Locked</div>
+        <div class="banner-footer">🛸 Bo0'sViDClone V10.0 Pro Custom Template</div>
     </div>
 """, unsafe_allow_html=True)
 
@@ -68,6 +68,10 @@ def get_arabic_font(font_size=24):
         except: return None
     try: return ImageFont.truetype(font_path, font_size)
     except: return None
+
+def hex_to_rgb(hex_str):
+    hex_str = hex_str.lstrip('#')
+    return tuple(int(hex_str[i:i+2], 16) for i in (0, 2, 4))
 
 def draw_wavy_text(draw, text, start_x, start_y, font, fill_color):
     current_x = start_x
@@ -96,12 +100,12 @@ def generate_smart_ai_description(raw_text):
     )
     return smart_proposal
 
-def process_image_template(image_path, blur_background=False, opacity_val=0.8):
+def process_image_template(image_path, blur_background=False, blur_intensity=3, opacity_val=0.8, logo_scale=0.22, text_scale=0.035, text_color="#FFD700", extra_text=""):
     img = Image.open(image_path).convert("RGBA")
     w, h = img.size
     
-    if blur_background:
-        blurred_img = img.filter(ImageFilter.GaussianBlur(radius=3))
+    if blur_background and blur_intensity > 0:
+        blurred_img = img.filter(ImageFilter.GaussianBlur(radius=blur_intensity))
         mask = Image.new("L", (w, h), 0)
         draw = ImageDraw.Draw(mask)
         draw.ellipse((w*0.05, h*0.05, w*0.95, h*0.95), fill=255)
@@ -117,19 +121,31 @@ def process_image_template(image_path, blur_background=False, opacity_val=0.8):
 
     if os.path.exists(config.ACTIVE_LOGO_PATH):
         logo = Image.open(config.ACTIVE_LOGO_PATH).convert("RGBA")
-        logo.thumbnail((int(w*0.22), int(h*0.12)))
+        # التحكم في حجم اللوجو ديناميكياً
+        logo.thumbnail((int(w * logo_scale), int(h * (logo_scale * 0.55))))
         r, g, b, a = logo.split()
         a = a.point(lambda p: int(p * opacity_val))
         logo_transparent = Image.merge("RGBA", (r, g, b, a))
         img.paste(logo_transparent, (w - logo.size[0] - 15, 15), logo_transparent)
         
     try:
-        current_brand_text = st.session_state.get("dynamic_brand_text", "Montgk Brand")
-        arabic_font = get_arabic_font(int(h * 0.035) if h > 500 else 18)
-        if arabic_font:
-            draw_wavy_text(draw, current_brand_text, 25, h - 50, arabic_font, (255, 255, 255, 230))
+        base_brand_text = st.session_state.get("dynamic_brand_text", "Montgk Brand")
+        if extra_text:
+            full_brand_text = f"{base_brand_text} - {extra_text}"
         else:
-            draw.text((20, h - 40), current_brand_text, fill=(255, 255, 255, 180))
+            full_brand_text = base_brand_text
+
+        # التحكم في حجم الخط ديناميكياً بناء على اختيار السيليدر لقوة التكبير والتصغير
+        calc_font_size = int(h * text_scale) if h > 500 else int(18 * (text_scale / 0.035))
+        if calc_font_size < 12: calc_font_size = 12
+        
+        arabic_font = get_arabic_font(calc_font_size)
+        rgb_color = hex_to_rgb(text_color) + (230,)
+        
+        if arabic_font:
+            draw_wavy_text(draw, full_brand_text, 25, h - 50, arabic_font, rgb_color)
+        else:
+            draw.text((20, h - 40), full_brand_text, fill=rgb_color)
     except: pass
     
     out_img_path = os.path.join(config.TMP_DIR, f"templated_{os.path.basename(image_path)}")
@@ -193,11 +209,25 @@ with st.sidebar:
         st.info("🔥 المنتجات الأكثر بحثاً: منظمات مطبخ تركي، سبرتاية كهربا مودرن، كوتشيات مستوردة فيتنامي.")
         
     st.write("---")
-    st.markdown("### 🎨 إعدادات الشفافية واللوجو الحية")
-    logo_opacity = st.slider("درجة شفافية اللوجو والـ Watermark:", min_value=0.1, max_value=1.0, value=0.7, step=0.05)
+    st.markdown("### 🖼️ هندسة قوالب الصور والبلور الاحترافي")
     
+    # التحكم في تشغيل وقوة البلور بالكامل
+    blur_bg_opt = st.checkbox("تفعيل تأثير الـ Blur لعزل خلفية الصور", value=True)
+    blur_intensity_val = st.slider("درجة قوة تغبيش البلور (Blur Intensity):", min_value=1, max_value=15, value=4, step=1)
+    
+    st.write("---")
+    st.markdown("### 🎨 ألوان وتكبير وتصغير اللوجو والكلمة المطبوعة")
+    logo_opacity = st.slider("درجة شفافية اللوجو المائي:", min_value=0.1, max_value=1.0, value=0.8, step=0.05)
+    
+    # 🎯 سيليدرات تحكم حية وفورية في الحجم التلقائي للوجو والخط
+    live_logo_size = st.slider("حجم لوجو القالب التلقائي (Logo Scale):", min_value=0.05, max_value=0.50, value=0.22, step=0.02)
+    live_text_size = st.slider("حجم خط الكلمة المطبوعة (Text Scale):", min_value=0.015, max_value=0.080, value=0.035, step=0.005)
+    
+    # التحكم في اللون (الافتراضي دهبي ملكي فخم ليتماشى مع طلبك)
+    custom_text_color = st.color_picker("اختر لون كلمة البراند المكتوبة (افتراضي ذهبي):", value="#FFD700")
+
     if os.path.exists(config.ACTIVE_LOGO_PATH):
-        st.image(config.ACTIVE_LOGO_PATH, caption="اللوجو النشط حالياً", width=110)
+        st.image(config.ACTIVE_LOGO_PATH, caption="اللوجو النشط حالياً", width=100)
         
     uploaded_logo = st.file_uploader("ارفع صورة لوجو جديدة للموقع:", type=["png", "jpg", "jpeg"])
     if uploaded_logo is not None:
@@ -206,20 +236,22 @@ with st.sidebar:
         st.rerun()
 
     st.write("---")
-    st.markdown("### 📝 نص البراند السفلي المطبوع")
+    st.markdown("### 📝 نص البراند وجمل الإضافات المخصصة")
     if "dynamic_brand_text" not in st.session_state:
         st.session_state["dynamic_brand_text"] = "Montgk Brand"
         
-    input_brand_text = st.text_input("غير كلمة الـ Watermark البديلة هنا:", value=st.session_state["dynamic_brand_text"])
+    input_brand_text = st.text_input("تعديل كلمة البراند الأساسية:", value=st.session_state["dynamic_brand_text"])
     if input_brand_text != st.session_state["dynamic_brand_text"]:
         st.session_state["dynamic_brand_text"] = input_brand_text
         st.success("📝 تم تحديث كلمة البراند!")
         st.rerun()
 
+    # ➕ حقل إضافة نص مخصص مع كلمة منتجك براند بناءً على طلبك
+    extra_brand_suffix = st.text_input("أضف كلمة أو جملة مخصصة بجانب البراند (اختياري):", value="", placeholder="مثال: Premium Quality")
+
     st.write("---")
     video_duration_choice = st.selectbox("اختر مدة رندرة الفيديو القصيرة:", ("20 ثانية (أسرع رندرة للـ Reels)", "30 ثانية (مثالي للشورتس)", "60 ثانية (دقيقة كاملة)", "الفيديو كامل (حد أقصى 5 دقائق)"))
     use_custom_audio = st.checkbox(f"دمج تراك الصوت الحصري", value=True)
-    blur_bg_opt = st.checkbox("تفعيل تأثير الـ Blur الاحترافي لعزل الخلفية", value=True)
     
     st.write("---")
     new_ch = st.text_input("أدخل معرف قناة تليجرام جديدة:")
@@ -281,7 +313,7 @@ with tab1:
                 if os.path.exists(config.ACTIVE_LOGO_PATH):
                     logo = (ImageClip(config.ACTIVE_LOGO_PATH)
                             .set_duration(modified_clip.duration)
-                            .resize(height=55)
+                            .resize(height=int(55 * (live_logo_size / 0.22)))
                             .margin(right=15, top=15, opacity=0)
                             .set_pos(("right", "top"))
                             .set_opacity(logo_opacity))
@@ -312,7 +344,18 @@ with tab2:
             for i, img_file in enumerate(uploaded_images):
                 temp_p = f"temp_product_{i}.png"
                 with open(temp_p, "wb") as f: f.write(img_file.read())
-                processed_p = process_image_template(temp_p, blur_background=blur_bg_opt, opacity_val=logo_opacity)
+                
+                # تمرير كافة إعدادات لوحة التحكم الجانبية الحية والجديدة
+                processed_p = process_image_template(
+                    temp_p, 
+                    blur_background=blur_bg_opt, 
+                    blur_intensity=blur_intensity_val, 
+                    opacity_val=logo_opacity,
+                    logo_scale=live_logo_size,
+                    text_scale=live_text_size,
+                    text_color=custom_text_color,
+                    extra_text=extra_brand_suffix
+                )
                 saved_paths.append(processed_p)
                 if os.path.exists(temp_p): os.remove(temp_p)
             
@@ -336,7 +379,7 @@ with tab2:
                     video_slideshow.write_videofile(video_slideshow_path, codec="libx264", fps=24, preset="ultrafast")
                     st.video(video_slideshow_path)
 
-# ==================== التبويب الثالث (الرادار والوصف والتوقيت الصارم) ====================
+# ==================== التبويب الثالث (الرادار والوصف والتوقيت الفعلي) ====================
 with tab3:
     st.subheader("🛰️ مركز الفحص والـ Forward وإعادة التسعير التلقائي")
     col1, col2 = st.columns(2)
@@ -347,8 +390,8 @@ with tab3:
     st.markdown("#### 🛡️ فلاتر الأمان والحد الأقصى قبل الانطلاق")
     max_price_threshold = st.number_input("اكتب الحد الأقصى للسعر المراد قنصه الآن:", min_value=1, max_value=9999999, value=5000)
     
-    # 🎯 تحديث فلتر التوقيت الشامل (اليوم - الأمس - قبل أمس - كل البوستات) بناءً على طلبك
-    st.markdown("#### 📅 فلتر توقيت سحب البوستات المطلوبة")
+    # فلاتر توقيت السيستم والبرنامج الحقيقي
+    st.markdown("#### 📅 فلتر توقيت سحب البوستات المطلوبة (تاريخ السيستم والبرنامج الحقيقي)")
     date_filter = st.radio("اختر النطاق الزمني لقنص البوستات:", ("اليوم فقط", "الأمس واليوم", "قبل أمس والـ 3 أيام الأخيرة", "كل البوستات المتاحة للقناة"), index=3, horizontal=True)
     
     st.write("---")
@@ -366,22 +409,20 @@ with tab3:
                     if res.status_code == 200:
                         soup = BeautifulSoup(res.content, "html.parser")
                         
-                        # سحب موسع عشان لو تليجرام غير الكلاسات يلقطها برضه وميهنجش
                         messages = soup.find_all("div", class_=lambda x: x and 'tgme_widget_message_wrap' in x)
                         if not messages:
                             messages = soup.find_all("div", {"class": "tgme_widget_message_wrap"})
                             
                         temp_collected = []
                         
-                        # حساب التواريخ ديناميكياً
+                        # حساب تواريخ البرنامج وسيستم الجهاز الفعلي
                         now = datetime.now()
-                        today_str = now.strftime("%Y-%m-%d")
-                        yesterday_str = (now - timedelta(days=1)).strftime("%Y-%m-%d")
-                        before_yesterday_str = (now - timedelta(days=2)).strftime("%Y-%m-%d")
-                        three_days_ago_str = (now - timedelta(days=3)).strftime("%Y-%m-%d")
+                        today_date = now.date()
+                        yesterday_date = today_date - timedelta(days=1)
+                        before_yesterday_date = today_date - timedelta(days=2)
+                        three_days_ago_date = today_date - timedelta(days=3)
 
                         for msg in reversed(messages):
-                            # البحث عن النص بأكتر من كلاس احتياطي لضمان السحب 100%
                             text_div = msg.find("div", {"class": "tgme_widget_message_text"})
                             if not text_div:
                                 text_div = msg.find("div", class_=lambda x: x and 'message_text' in x)
@@ -389,17 +430,19 @@ with tab3:
                             time_tag = msg.find("time")
                             
                             if text_div:
-                                # لو مفيش تايم تاج، بنعتبره بوست لسة نازل حالا عشان ميتفوتش
-                                post_date = today_str
-                                if time_tag:
-                                    datetime_attr = time_tag.get("datetime", "")
-                                    if datetime_attr:
-                                        post_date = datetime_attr.split("T")[0]
+                                # قراءة تاريخ السيستم للبوست من الـ timestamp الفعلي لتليجرام وليس من النص
+                                post_date = today_date
+                                if time_tag and time_tag.get("datetime"):
+                                    try:
+                                        iso_date_str = time_tag.get("datetime").split("T")[0]
+                                        post_date = datetime.strptime(iso_date_str, "%Y-%m-%d").date()
+                                    except:
+                                        pass
                                 
-                                # تطبيق فلاتر الوقت الموسعة الجديدة بدون بعبصة
-                                if date_filter == "اليوم فقط" and post_date != today_str: continue
-                                if date_filter == "الأمس واليوم" and post_date not in [today_str, yesterday_str]: continue
-                                if date_filter == "قبل أمس والـ 3 أيام الأخيرة" and post_date not in [today_str, yesterday_str, before_yesterday_str, three_days_ago_str]: continue
+                                # تصفية دقيقة مبنية على تاريخ البرنامج والسيستم الحقيقي
+                                if date_filter == "اليوم فقط" and post_date != today_date: continue
+                                if date_filter == "الأمس واليوم" and post_date not in [today_date, yesterday_date]: continue
+                                if date_filter == "قبل أمس والـ 3 أيام الأخيرة" and post_date not in [today_date, yesterday_date, before_yesterday_date, three_days_ago_date]: continue
                                 
                                 p_text = text_div.text.strip()
                                 photo_url = None
@@ -418,12 +461,12 @@ with tab3:
                         
                         st.session_state["cached_posts"] = temp_collected
                         if not temp_collected:
-                            st.warning("⚠️ الرادار فتح القناة بس ملحقش بوستات مطابقة لفلتر الوقت المختار، جرب تختار 'كل البوستات المتاحة للقناة'.")
+                            st.warning("⚠️ الرادار فتح القناة بس ملحقش بوستات مطابقة لفلتر وقت السيستم المختار.")
                         else:
-                            st.success(f"🎯 الرادار قنص {len(temp_collected)} بوست بنجاح مية مية!")
+                            st.success(f"🎯 الرادار قنص {len(temp_collected)} بوست حقيقي بنجاح مية مية!")
                     else:
-                        st.error(f"❌ تليجرام رافض الاستجابة حالياً، كود الخطأ: {res.status_code}")
-                except Exception as e: st.error(f"خطأ غير متوقع في الرادار: {str(e)}")
+                        st.error(f"❌ خطأ استجابة من تليجرام: {res.status_code}")
+                except Exception as e: st.error(f"خطأ غير متوقع في الرادار الزمني: {str(e)}")
     else:
         forwarded_text = st.text_area("الزق نص البوست الـ Forward هنا:")
         uploaded_image = st.file_uploader("📥 ارفع صورة المنتج المصاحبة:")
