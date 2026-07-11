@@ -12,12 +12,15 @@ import cv2
 import numpy as np
 from PIL import Image, ImageFilter, ImageDraw, ImageFont, ImageEnhance
 
-# التعديل المظبوط لحل مشكلة الإيرور تماماً وبدون دروب
+# التعديل النهائي المعتمد لنسخة MoviePy 2.0+ على السيرفر
 from moviepy.video.io.VideoFileClip import VideoFileClip
 from moviepy.video.VideoClip import ImageClip
 from moviepy.video.compositing.CompositeVideoClip import CompositeVideoClip
 from moviepy.audio.io.AudioFileClip import AudioFileClip
-from moviepy.video.compositing.concatenate import concat_video_clips
+
+# استدعاء الدالة باسمها الجديد وتحويلها للاسم القديم عشان كودك التحتاني ميزعلش
+from moviepy.video.compositing.concatenate import concatenate_videoclips as concat_video_clips
+
 import moviepy.video.fx as vfx
 import yt_dlp
 import io
