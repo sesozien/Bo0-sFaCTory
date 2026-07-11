@@ -13,9 +13,13 @@ import numpy as np
 from PIL import Image, ImageFilter, ImageDraw, ImageFont, ImageEnhance
 
 # التعديل المظبوط والنهائي لحل مشكلة الإيرور تماماً وبدون دروب
-from moviepy.editor import VideoFileClip, ImageClip, CompositeVideoClip, AudioFileClip, concat_video_clips
-import moviepy.video.fx.all as vfx
-import yt_dlp
+# الاستدعاء الصحيح المتوافق مع تحديث MoviePy الجديد كلياً على سيرفر Streamlit
+from moviepy.video.io.VideoFileClip import VideoFileClip
+from moviepy.video.VideoClip import ImageClip
+from moviepy.video.compositing.CompositeVideoClip import CompositeVideoClip
+from moviepy.audio.io.AudioFileClip import AudioFileClip
+from moviepy.video.compositing.concatenate import concat_video_clips
+import moviepy.video.fx as vfximport yt_dlp
 import io
 import pandas as pd
 
@@ -457,7 +461,7 @@ with tab2:
                 with st.spinner("🎬 جاري نسج الصور في مقطع فيديو..."):
                     img_clips = [ImageClip(p).set_duration(3) for p in saved_paths]
                     # تم حل الإيرور نهائياً باستخدام التعديل بتاعك هنا
-                    video_slideshow = concat_video_clips(img_clips)
+                    video_slideshow = concat_video_clips(img_clips, method="compose")
                     
                     if audio_mode == "رفع تراك أوديو MP3 مخصص من جهازك" and uploaded_custom_audio is not None:
                         temp_audio_p2 = os.path.join(config.TMP_DIR, "user_custom_audio_slide.mp3")
