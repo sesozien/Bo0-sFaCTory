@@ -71,8 +71,23 @@ st.markdown(f"""
     </div>
 """, unsafe_allow_html=True)
 
+# -------------------------------------------------------------------
+# 🚀 التعديل المعتمد والمضمون لقراءة الخط العربي من فولدر cairo ومنع المربعات
+# -------------------------------------------------------------------
 def get_arabic_font(font_size=24):
-    # مسار آمن في السيرفر لضمان الصلاحيات وحفظ الخط بشكل سليم
+    folder_name = "cairo"
+    
+    # 1. محاولة القراءة مباشرة من فولدر cairo المجاور لملف app.py
+    if os.path.exists(folder_name) and os.path.isdir(folder_name):
+        files = [f for f in os.listdir(folder_name) if f.lower().endswith('.ttf')]
+        if files:
+            font_path = os.path.join(folder_name, files[0])
+            try:
+                return ImageFont.truetype(font_path, font_size)
+            except:
+                pass
+                
+    # 2. حل احتياطي (سيرفر كودك القديم) لو الفولدر مش موجود أو فاضي عشان ميعطلش
     font_dir = os.path.join(os.path.expanduser("~"), ".fonts")
     os.makedirs(font_dir, exist_ok=True)
     font_path = os.path.join(font_dir, "Cairo-Bold.ttf")
@@ -82,9 +97,13 @@ def get_arabic_font(font_size=24):
             url = "https://github.com/google/fonts/raw/main/ofl/cairo/Cairo-Bold.ttf"
             r = requests.get(url, timeout=15)
             with open(font_path, "wb") as f: f.write(r.content)
-        except: return None
-    try: return ImageFont.truetype(font_path, font_size)
-    except: return None
+        except: 
+            return None
+            
+    try: 
+        return ImageFont.truetype(font_path, font_size)
+    except: 
+        return None
 
 def hex_to_rgb(hex_str):
     hex_str = hex_str.lstrip('#')
@@ -472,7 +491,7 @@ with tab2:
                     st.image(p, caption=f"🖼️ منتج رقم {idx+1}", use_container_width=True)
                     
             elif album_choice == "🖼️ تجميع في صورة واحدة (Collage)":
-                st.success("🎉 تم دمج الألبوم كله في شبكة كولاج فخمة ومنظمة!")
+                st.success("🎉 تم دمج الألبوم كله in شبكة كولاج فخمة ومنظمة!")
                 collage_result = create_image_collage(saved_paths, target_size=(1080, 1080) if not chosen_size else chosen_size)
                 st.image(collage_result, caption="📸 صورة الكولاج الشبكية المجمعة الاحترافية", use_container_width=True)
                 
@@ -514,7 +533,7 @@ with tab3:
 
     if radar_mode == "🛰️ سحب رادار حي وفوري":
         target_channel_input = st.selectbox("اختر القناة لالتقاط المنتجات:", current_channels)
-        if st.button("🛰️ أطلق الرادار واقنص المحتوى"):
+        if st.button("🛰️ أطلق الرادار وااقنص المحتوى"):
             with st.spinner("جاري قنص الداتا بالحد الأقصى وتاريخ الفلتر المطلوب..."):
                 try:
                     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
