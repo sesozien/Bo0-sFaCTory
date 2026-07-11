@@ -13,3 +13,5 @@ openpyxl
 python-telegram-bot==20.8
 telethon
 pandas
+arabic-reshaper
+python-bidi
