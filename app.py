@@ -12,14 +12,14 @@ import cv2
 import numpy as np
 from PIL import Image, ImageFilter, ImageDraw, ImageFont, ImageEnhance
 
-# التعديل المظبوط والنهائي لحل مشكلة الإيرور تماماً وبدون دروب
-# الاستدعاء الصحيح المتوافق مع تحديث MoviePy الجديد كلياً على سيرفر Streamlit
+# التعديل المظبوط لحل مشكلة الإيرور تماماً وبدون دروب
 from moviepy.video.io.VideoFileClip import VideoFileClip
 from moviepy.video.VideoClip import ImageClip
 from moviepy.video.compositing.CompositeVideoClip import CompositeVideoClip
 from moviepy.audio.io.AudioFileClip import AudioFileClip
 from moviepy.video.compositing.concatenate import concat_video_clips
-import moviepy.video.fx as vfximport yt_dlp
+import moviepy.video.fx as vfx
+import yt_dlp
 import io
 import pandas as pd
 
