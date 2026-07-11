@@ -26,6 +26,10 @@ import yt_dlp
 import io
 import pandas as pd
 
+# استدعاء مكتبات حل مشكلة الخط العربي والمربعات
+import arabic_reshaper
+from bidi.algorithm import get_display
+
 # استدعاء ملف الكونفيج المطور
 import config
 
@@ -68,7 +72,11 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 def get_arabic_font(font_size=24):
-    font_path = os.path.join(config.TMP_DIR, "Cairo-Bold.ttf")
+    # مسار آمن في السيرفر لضمان الصلاحيات وحفظ الخط بشكل سليم
+    font_dir = os.path.join(os.path.expanduser("~"), ".fonts")
+    os.makedirs(font_dir, exist_ok=True)
+    font_path = os.path.join(font_dir, "Cairo-Bold.ttf")
+    
     if not os.path.exists(font_path):
         try:
             url = "https://github.com/google/fonts/raw/main/ofl/cairo/Cairo-Bold.ttf"
@@ -83,8 +91,12 @@ def hex_to_rgb(hex_str):
     return tuple(int(hex_str[i:i+2], 16) for i in (0, 2, 4))
 
 def draw_wavy_text(draw, text, start_x, start_y, font, fill_color):
+    # تشكيل وضبط اتجاه النص العربي بالكامل لمنع المربعات
+    reshaped_text = arabic_reshaper.reshape(text)
+    bidi_text = get_display(reshaped_text)
+    
     current_x = start_x
-    for i, char in enumerate(text):
+    for i, char in enumerate(bidi_text):
         amplitude = 6 
         frequency = 0.4
         offset_y = int(amplitude * math.sin(frequency * i))
@@ -143,8 +155,10 @@ def process_image_template(image_path, blur_background=False, blur_intensity=3, 
 
     shield_font = get_arabic_font(12)
     if shield_font:
-        draw.text((15, 20), "ORIGINAL BRAND", fill=(255, 255, 255, 60), font=shield_font)
-        draw.text((w - 140, h - 35), "PREMIUM QUALITY", fill=(255, 255, 255, 60), font=shield_font)
+        original_brand_text = get_display(arabic_reshaper.reshape("ORIGINAL BRAND"))
+        premium_quality_text = get_display(arabic_reshaper.reshape("PREMIUM QUALITY"))
+        draw.text((15, 20), original_brand_text, fill=(255, 255, 255, 60), font=shield_font)
+        draw.text((w - 140, h - 35), premium_quality_text, fill=(255, 255, 255, 60), font=shield_font)
 
     if os.path.exists(config.ACTIVE_LOGO_PATH):
         logo = Image.open(config.ACTIVE_LOGO_PATH).convert("RGBA")
@@ -170,7 +184,9 @@ def process_image_template(image_path, blur_background=False, blur_intensity=3, 
         if arabic_font:
             draw_wavy_text(draw, full_brand_text, 25, h - 50, arabic_font, rgb_color)
         else:
-            draw.text((20, h - 40), full_brand_text, fill=rgb_color)
+            # معالجة الخط الـ Fallback في حالة عدم تحميل الـ تيف تيف
+            reshaped_fallback = get_display(arabic_reshaper.reshape(full_brand_text))
+            draw.text((20, h - 40), reshaped_fallback, fill=rgb_color)
     except: pass
     
     out_img_path = os.path.join(config.TMP_DIR, f"templated_{os.path.basename(image_path)}")
@@ -463,7 +479,7 @@ with tab2:
             else:
                 with st.spinner("🎬 جاري نسج الصور في مقطع فيديو..."):
                     img_clips = [ImageClip(p).set_duration(3) for p in saved_paths]
-                    # تم حل الإيرور نهائياً باستخدام التعديل بتاعك هنا
+                    # التعديل المتوافق لنسخة moviepy 2.0 بدون دروب
                     video_slideshow = concat_video_clips(img_clips, method="compose")
                     
                     if audio_mode == "رفع تراك أوديو MP3 مخصص من جهازك" and uploaded_custom_audio is not None:
