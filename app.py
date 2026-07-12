@@ -72,22 +72,21 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # -------------------------------------------------------------------
-# 🚀 التعديل المعتمد والمضمون لقراءة الخط العربي من فولدر cairo ومنع المربعات
+# 🚀 التعديل الجذري: فحص المجلد بالحروف الكابيتال والسمول معاً لحل مشكلة السيرفر
 # -------------------------------------------------------------------
 def get_arabic_font(font_size=24):
-    folder_name = "cairo"
-    
-    # 1. محاولة القراءة مباشرة من فولدر cairo المجاور لملف app.py
-    if os.path.exists(folder_name) and os.path.isdir(folder_name):
-        files = [f for f in os.listdir(folder_name) if f.lower().endswith('.ttf')]
-        if files:
-            font_path = os.path.join(folder_name, files[0])
-            try:
-                return ImageFont.truetype(font_path, font_size)
-            except:
-                pass
+    # بنجرب الأسماء المحتملة للفولدر على السيرفر (كابيتال وسمول) لضمان القنص
+    for folder_name in ["Cairo", "cairo"]:
+        if os.path.exists(folder_name) and os.path.isdir(folder_name):
+            files = [f for f in os.listdir(folder_name) if f.lower().endswith('.ttf')]
+            if files:
+                font_path = os.path.join(folder_name, files[0])
+                try:
+                    return ImageFont.truetype(font_path, font_size)
+                except:
+                    pass
                 
-    # 2. حل احتياطي (سيرفر كودك القديم) لو الفولدر مش موجود أو فاضي عشان ميعطلش
+    # حل احتياطي ثانٍ: التحقق من وجود فولدر الخطوط العام في النظام
     font_dir = os.path.join(os.path.expanduser("~"), ".fonts")
     os.makedirs(font_dir, exist_ok=True)
     font_path = os.path.join(font_dir, "Cairo-Bold.ttf")
@@ -110,7 +109,6 @@ def hex_to_rgb(hex_str):
     return tuple(int(hex_str[i:i+2], 16) for i in (0, 2, 4))
 
 def draw_wavy_text(draw, text, start_x, start_y, font, fill_color):
-    # تشكيل وضبط اتجاه النص العربي بالكامل لمنع المربعات
     reshaped_text = arabic_reshaper.reshape(text)
     bidi_text = get_display(reshaped_text)
     
@@ -203,9 +201,10 @@ def process_image_template(image_path, blur_background=False, blur_intensity=3, 
         if arabic_font:
             draw_wavy_text(draw, full_brand_text, 25, h - 50, arabic_font, rgb_color)
         else:
-            # معالجة الخط الـ Fallback في حالة عدم تحميل الـ تيف تيف
-            reshaped_fallback = get_display(arabic_reshaper.reshape(full_brand_text))
-            draw.text((20, h - 40), reshaped_fallback, fill=rgb_color)
+            # لتجنب المربعات تماماً: لو السيستم مقدرش يلقط ملف الخط، هنطبع الحروف الإنجليزية والأرقام بس ونلغي العربي في الصورة
+            clean_eng_text = re.sub(r'[\u0600-\u06FF]+', '', full_brand_text).strip()
+            if clean_eng_text:
+                draw.text((20, h - 40), clean_eng_text, fill=rgb_color)
     except: pass
     
     out_img_path = os.path.join(config.TMP_DIR, f"templated_{os.path.basename(image_path)}")
@@ -498,7 +497,6 @@ with tab2:
             else:
                 with st.spinner("🎬 جاري نسج الصور في مقطع فيديو..."):
                     img_clips = [ImageClip(p).set_duration(3) for p in saved_paths]
-                    # التعديل المتوافق لنسخة moviepy 2.0 بدون دروب
                     video_slideshow = concat_video_clips(img_clips, method="compose")
                     
                     if audio_mode == "رفع تراك أوديو MP3 مخصص من جهازك" and uploaded_custom_audio is not None:
