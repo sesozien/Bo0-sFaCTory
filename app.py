@@ -72,10 +72,9 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # -------------------------------------------------------------------
-# 🚀 التعديل الجذري لملف الخط: فحص المجلد بالحروف الكابيتال والسمول معاً لحل مشكلة السيرفر
+# 🚀 رادار البحث المطور عن الخط الكابيتال والسمول
 # -------------------------------------------------------------------
 def get_arabic_font(font_size=24):
-    # بنجرب الأسماء المحتملة للفولدر على السيرفر (كابيتال وسمول) لضمان القنص
     for folder_name in ["Cairo", "cairo"]:
         if os.path.exists(folder_name) and os.path.isdir(folder_name):
             files = [f for f in os.listdir(folder_name) if f.lower().endswith('.ttf')]
@@ -86,7 +85,6 @@ def get_arabic_font(font_size=24):
                 except:
                     pass
                 
-    # حل احتياطي ثانٍ: التحقق من وجود فولدر الخطوط العام في النظام
     font_dir = os.path.join(os.path.expanduser("~"), ".fonts")
     os.makedirs(font_dir, exist_ok=True)
     font_path = os.path.join(font_dir, "Cairo-Bold.ttf")
@@ -108,19 +106,52 @@ def hex_to_rgb(hex_str):
     hex_str = hex_str.lstrip('#')
     return tuple(int(hex_str[i:i+2], 16) for i in (0, 2, 4))
 
-def draw_wavy_text(draw, text, start_x, start_y, font, fill_color):
+# -------------------------------------------------------------------
+# 👑 نظام هندسة الخط الفخم والـ Shadow المحترف لمنع التشويه تماماً
+# -------------------------------------------------------------------
+def draw_premium_text(img, text, font, fill_color):
+    draw = ImageDraw.Draw(img)
+    w, h = img.size
+    
+    # تجهيز النص العربي وإعادة تشكيله ليتصل بشكل سليم ومثالي
     reshaped_text = arabic_reshaper.reshape(text)
     bidi_text = get_display(reshaped_text)
     
-    current_x = start_x
-    for i, char in enumerate(bidi_text):
-        amplitude = 6 
-        frequency = 0.4
-        offset_y = int(amplitude * math.sin(frequency * i))
-        draw.text((current_x + 1, start_y + offset_y + 1), char, fill=(0, 0, 0, 150), font=font)
-        draw.text((current_x, start_y + offset_y), char, fill=fill_color, font=font)
-        char_w = font.getmask(char).getbbox()[2] if font.getmask(char).getbbox() else 12
-        current_x += char_w + 4
+    # حساب أبعاد النص بدقة لعمل الهوامش
+    if hasattr(font, 'getbbox'):
+        bbox = font.getbbox(bidi_text)
+        text_w = bbox[2] - bbox[0]
+        text_h = bbox[3] - bbox[1]
+    else:
+        text_w, text_h = draw.textsize(bidi_text, font=font)
+        
+    # تحديد مكان الشريط السفلي الفخم
+    pad_x, pad_y = 25, 20
+    rect_x1 = 15
+    rect_y1 = h - text_h - (pad_y * 2) - 15
+    rect_x2 = text_w + (pad_x * 2) + 15
+    rect_y2 = h - 15
+    
+    # التأكد أن الشريط لا يخرج عن حجم الصورة الأصلي
+    if rect_x2 > w: rect_x2 = w - 15
+    
+    # 1. رسم شريط خلفية زجاجي شفاف أسود ليعطي فخامة ويبرز الخط
+    overlay = Image.new('RGBA', img.size, (0, 0, 0, 0))
+    overlay_draw = ImageDraw.Draw(overlay)
+    overlay_draw.rounded_rectangle([rect_x1, rect_y1, rect_x2, rect_y2], radius=12, fill=(0, 0, 0, 130))
+    img.alpha_composite(overlay)
+    
+    # إعادة تهيئة الـ draw بعد الدمج لطباعة الخط فوق الشريط
+    draw = ImageDraw.Draw(img)
+    
+    text_position = (rect_x1 + pad_x, rect_y1 + pad_y - 4)
+    
+    # 2. رسم ظل ناعم خلف الخط لإعطائه عمق ثنائي الأبعاد
+    shadow_offset = 2
+    draw.text((text_position[0] + shadow_offset, text_position[1] + shadow_offset), bidi_text, fill=(0, 0, 0, 220), font=font)
+    
+    # 3. رسم الخط الأصلي المتصل النظيف بلون الاختيار الخاص بك
+    draw.text(text_position, bidi_text, fill=fill_color, font=font)
 
 def generate_smart_ai_description(raw_text):
     clean = re.sub(r'http[s]?://\S+|www\.\S+', '', raw_text)
@@ -193,15 +224,15 @@ def process_image_template(image_path, blur_background=False, blur_intensity=3, 
             full_brand_text = base_brand_text
 
         calc_font_size = int(h * text_scale) if h > 500 else int(18 * (text_scale / 0.035))
-        if calc_font_size < 12: calc_font_size = 12
+        if calc_font_size < 14: calc_font_size = 14
         
         arabic_font = get_arabic_font(calc_font_size)
-        rgb_color = hex_to_rgb(text_color) + (230,)
+        rgb_color = hex_to_rgb(text_color) + (255,)
         
         if arabic_font:
-            draw_wavy_text(draw, full_brand_text, 25, h - 50, arabic_font, rgb_color)
+            # مناداة نظام التلوين الفخم الجديد الذي يحمي الحروف من التشويه والتقطيع
+            draw_premium_text(img, full_brand_text, arabic_font, rgb_color)
         else:
-            # لتجنب المربعات تماماً: لو السيستم مقدرش يلقط ملف الخط، هنطبع الحروف الإنجليزية والأرقام بس ونلغي العربي في الصورة
             clean_eng_text = re.sub(r'[\u0600-\u06FF]+', '', full_brand_text).strip()
             if clean_eng_text:
                 draw.text((20, h - 40), clean_eng_text, fill=rgb_color)
@@ -295,7 +326,6 @@ with st.sidebar:
     if st.button("🔍 فحص ترندات المنصات اللحظية"):
         with st.spinner("جاري سحب وفحص كلمات البحث الرائجة..."):
             try:
-                # محاولة السحب الحي من جوجل ترندز مصر
                 r_trend = requests.get("https://trends.google.com/trends/trendingsearches/daily/rss?geo=EG", timeout=8)
                 if r_trend.status_code == 200:
                     soup_t = BeautifulSoup(r_trend.content, "xml")
@@ -306,25 +336,19 @@ with st.sidebar:
                 else:
                     raise Exception("سيرفر جوجل مشغول")
             except:
-                # 🧠 المولد الذكي البديل: بيغير المنتجات والترندات بناءً على العشوائية الذكية والوقت عشان متكررش الإجابة نهائي
                 import random
-                
-                # تصنيفات منتجات حقيقية تكتسح السوق
                 niches = [
                     ["منظمات المطبخ الاكريليك الشفافة", "مكياج براندات كورية ترند تيك توك", "كوتشيات فيتنامي مستوردة high quality"],
                     ["سبرتاية كهربا مودرن ديجيتال", "إلكترونيات ذكية للمنزل", "باور بانك شحن سريع وساعات سمارت"],
                     ["أدوات تنظيم البيت وترتيب الدواليب", "ملابس تريندي صيفية كاجوال", "إكسسوارات سيارات ومستلزمات الجيم"],
                     ["ألعاب ذكية للأطفال وتنمية مهارات", "شنط كروس جلد طبيعي مستورد", "أجهزة تدليك ومساج منزلية محموله"]
                 ]
-                
-                # خطافات تسويقية حماسية لـ مستر بو
                 hooks = [
                     "🚀 رادار الأسواق لقط سحب عالي جداً الآن على:",
                     "🔥 المنتجات دي مكسرة الدنيا ومطلوبة بالاسم في الـ Reels والتيك توك:",
                     "📈 المؤشرات اللحظية بتقول إن الزبون بيدور حالياً على:",
                     "💎 لقطة الموسم اللي عليها العين والطلب في المحلات دلوقتي:"
                 ]
-                
                 chosen_niche = random.choice(niches)
                 chosen_hook = random.choice(hooks)
                 
@@ -547,7 +571,7 @@ with tab3:
     st.markdown("#### 🛡️ فلاتر الأمان والحد الأقصى قبل الانطلاق")
     max_price_threshold = st.number_input("اكتب الحد الأقصى للسعر المراد قنصه الآن:", min_value=1, max_value=9999999, value=5000)
     
-    st.markdown("#### 📅 فلتر توقيت سحب البوستات المطلوبة (تاريخ السيستم والبرنامج الحقيقي)")
+    st.markdown("#### 📅 فلتر توقيت سحب البوستات المطلوبة")
     date_filter = st.radio("اختر النطاق الزمني لقنص البوستات:", ("اليوم فقط", "الأمس واليوم", "قبل أمس والـ 3 أيام الأخيرة", "كل البوستات المتاحة للقناة"), index=3, horizontal=True)
     
     st.write("---")
@@ -564,13 +588,11 @@ with tab3:
                     res = requests.get(f"https://t.me/s/{target_channel_input}", headers=headers, timeout=12)
                     if res.status_code == 200:
                         soup = BeautifulSoup(res.content, "html.parser")
-                        
                         messages = soup.find_all("div", class_=lambda x: x and 'tgme_widget_message_wrap' in x)
                         if not messages:
                             messages = soup.find_all("div", {"class": "tgme_widget_message_wrap"})
                             
                         temp_collected = []
-                        
                         now = datetime.now()
                         today_date = now.date()
                         yesterday_date = today_date - timedelta(days=1)
@@ -583,15 +605,13 @@ with tab3:
                                 text_div = msg.find("div", class_=lambda x: x and 'message_text' in x)
                                 
                             time_tag = msg.find("time")
-                            
                             if text_div:
                                 post_date = today_date
                                 if time_tag and time_tag.get("datetime"):
                                     try:
                                         iso_date_str = time_tag.get("datetime").split("T")[0]
                                         post_date = datetime.strptime(iso_date_str, "%Y-%m-%d").date()
-                                    except:
-                                        pass
+                                    except: pass
                                 
                                 if date_filter == "اليوم فقط" and post_date != today_date: continue
                                 if date_filter == "الأمس والوقت" and post_date not in [today_date, yesterday_date]: continue
@@ -654,7 +674,6 @@ with tab3:
             if item["image"]: st.image(item["image"], width=250)
             
             is_single_piece = check_if_single_piece_text(item["text"])
-            
             if is_single_piece:
                 st.warning("🎯 محرك الأسعار لقط تلقائياً إن السعر ده لـ (قطعة منفردة/واحدة) ومش سعر بوكس كامل!")
             
