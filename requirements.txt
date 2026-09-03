@@ -15,3 +15,5 @@ telethon
 pandas
 arabic-reshaper
 python-bidi
+rembg
+onnxruntime
