@@ -59,9 +59,15 @@ DEFAULT_SETTINGS = {
     "blur_val": 15,
     "enhance_opt": True,
     "sharp_val": 2.0,
+    "quality_val": 95,
     "color_preset": "طبيعي (بدون فلتر)",
     "dynamic_brand_text": "Montgk Brand",
-    "enable_watermark_pattern": False
+    "enable_watermark_pattern": False,
+    "enable_crop": False,
+    "crop_left": 0,
+    "crop_top": 0,
+    "crop_right": 0,
+    "crop_bottom": 0
 }
 
 for k, v in DEFAULT_SETTINGS.items():
@@ -233,21 +239,37 @@ def generate_auto_hashtags(product_name):
     return " ".join(base_tags)
 
 def enhance_image_quality(pil_img, sharpness_factor=2.0):
-    sharpener = ImageEnhance.Sharpness(pil_img)
-    pil_img = sharpener.enhance(sharpness_factor) 
+    """تطبيق الحدوة والتباين بدقة وفعالية بدون تشويه"""
+    if sharpness_factor > 0:
+        sharpener = ImageEnhance.Sharpness(pil_img)
+        pil_img = sharpener.enhance(1.0 + sharpness_factor)
     contrast = ImageEnhance.Contrast(pil_img)
     pil_img = contrast.enhance(1.15)
     return pil_img
+
+def apply_image_crop(pil_img, c_left, c_top, c_right, c_bottom):
+    """قص حواف الصورة بناءً على قيم البكسل"""
+    w, h = pil_img.size
+    left = min(c_left, w - 1)
+    top = min(c_top, h - 1)
+    right = max(w - c_right, left + 1)
+    bottom = max(h - c_bottom, top + 1)
+    return pil_img.crop((left, top, right, bottom))
 
 def process_image_template(image_path, blur_background=True, blur_intensity=12, opacity_val=0.8, 
                            fit_auto_logo=True, logo_custom_w=200, logo_custom_h=200,
                            brand_text_scale=0.035, brand_color="#FFD700", brand_pos="تحت شمال (Bottom-Left)", brand_off_x=0, brand_off_y=0,
                            extra_text="", extra_text_scale=0.025, extra_color="#FFFFFF", extra_pos="تحت يمين (Bottom-Right)", extra_off_x=0, extra_off_y=0,
-                           target_size=None, enhance_quality=True, sharpness_val=2.0, logo_pos_mode="فوق يمين (Top-Right)", logo_off_x=0, logo_off_y=0,
-                           enable_watermark_pattern=False, color_preset="طبيعي (بدون فلتر)"):
+                           target_size=None, enhance_quality=True, sharpness_val=2.0, quality_val=95, logo_pos_mode="فوق يمين (Top-Right)", logo_off_x=0, logo_off_y=0,
+                           enable_watermark_pattern=False, color_preset="طبيعي (بدون فلتر)",
+                           enable_crop=False, c_left=0, c_top=0, c_right=0, c_bottom=0):
     
     img = Image.open(image_path).convert("RGBA")
     
+    # 0. تطبيق القص (Crop) أولاً إن وجد
+    if enable_crop and (c_left > 0 or c_top > 0 or c_right > 0 or c_bottom > 0):
+        img = apply_image_crop(img, c_left, c_top, c_right, c_bottom)
+
     img = apply_color_preset(img, color_preset)
 
     if enhance_quality:
@@ -314,7 +336,7 @@ def process_image_template(image_path, blur_background=True, blur_intensity=12, 
         img = apply_watermark_pattern(img, base_brand_text)
 
     out_img_path = os.path.join(config.TMP_DIR, f"templated_{os.path.basename(image_path)}")
-    img.convert("RGB").save(out_img_path, "JPEG", quality=95)
+    img.convert("RGB").save(out_img_path, "JPEG", quality=int(quality_val))
     return out_img_path
 
 def create_image_collage(image_paths, target_size=(1080, 1080)):
@@ -499,12 +521,23 @@ with st.sidebar:
         image_duration_per_slide = 3
 
     st.write("---")
-    st.markdown("### 🖼️ 5. فلاتر الصور والحماية الذكية")
+    st.markdown("### 🖼️ 5. فلاتر الصور، الجودة والقص")
     blur_bg_opt = st.checkbox("تفعيل خلفية Blur من نفس الصورة", key="blur_bg")
     blur_intensity_val = st.slider("قوة تغبيش الخلفية (Blur Radius):", 1, 30, key="blur_val")
     enhance_quality_opt = st.checkbox("تفعيل فلتر الجودة والحدة 🚀", key="enhance_opt")
     sharpness_slider_val = st.slider("مستوى حدة التفاصيل (Sharpness):", 0.0, 5.0, key="sharp_val")
+    quality_slider_val = st.slider("نسبة جودة الضغط (Quality %):", 10, 100, key="quality_val")
     protect_watermark = st.checkbox("إضافة علامة مائية شبكية لحماية الصور", key="enable_watermark_pattern")
+    
+    st.markdown("#### ✂️ أداة قص الصور (Crop)")
+    enable_crop_opt = st.checkbox("تفعيل قص أطراف الصور (Crop)", key="enable_crop")
+    if enable_crop_opt:
+        crop_l = st.slider("قص من اليسار (Left px):", 0, 500, key="crop_left")
+        crop_t = st.slider("قص من الأعلى (Top px):", 0, 500, key="crop_top")
+        crop_r = st.slider("قص من اليمين (Right px):", 0, 500, key="crop_right")
+        crop_b = st.slider("قص من الأسفل (Bottom px):", 0, 500, key="crop_bottom")
+    else:
+        crop_l = crop_t = crop_r = crop_b = 0
 
     if os.path.exists(config.ACTIVE_LOGO_PATH):
         st.image(config.ACTIVE_LOGO_PATH, caption="اللوجو النشط", width=100)
@@ -640,78 +673,89 @@ with tab2:
     st.subheader("🖼️ مصنع تجميل صور المنتجات وفيديوهات السلايد شو الذكية")
     uploaded_images = st.file_uploader("ارفع الصور هنا:", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
     
+    # زر المعاينة قبل/بعد
+    show_orig_toggle = st.checkbox("👁️ عرض الصور الأصلية (قبل التعديل للمعاينة)", value=False)
+
     if uploaded_images:
         if len(uploaded_images) > 1:
             album_choice = st.radio("اختر نمط التصدير:", ("📥 ألبوم صور مفرودة منفصلة", "🎬 دمجهم فيديو متحرك (Slideshow)", "🖼️ تجميع في صورة واحدة (Collage)"))
         else: album_choice = "📥 ألبوم صور مفرودة منفصلة"
 
-        if st.button("⚙️ ابدأ معالجة الصور"):
-            saved_paths = []
-            for i, img_file in enumerate(uploaded_images):
-                temp_p = f"temp_product_{i}.png"
-                with open(temp_p, "wb") as f: f.write(img_file.read())
-                
-                processed_p = process_image_template(
-                    temp_p, 
-                    blur_background=blur_bg_opt, 
-                    blur_intensity=blur_intensity_val, 
-                    opacity_val=logo_opacity,
-                    fit_auto_logo=fit_auto_logo,
-                    logo_custom_w=logo_custom_w,
-                    logo_custom_h=logo_custom_h,
+        if show_orig_toggle:
+            st.info("📷 الصورة الأصلية بدون أي إضافات أو تعديلات:")
+            for idx, img_f in enumerate(uploaded_images):
+                st.image(img_f, caption=f"أصل صورة {idx+1}", use_container_width=True)
+        else:
+            if st.button("⚙️ ابدأ معالجة الصور"):
+                saved_paths = []
+                for i, img_file in enumerate(uploaded_images):
+                    temp_p = f"temp_product_{i}.png"
+                    with open(temp_p, "wb") as f: f.write(img_file.read())
                     
-                    brand_text_scale=brand_text_scale,
-                    brand_color=brand_color,
-                    brand_pos=brand_position_choice,
-                    brand_off_x=brand_offset_x,
-                    brand_off_y=brand_offset_y,
-                    
-                    extra_text=extra_brand_suffix,
-                    extra_text_scale=extra_text_scale,
-                    extra_color=extra_color,
-                    extra_pos=extra_position_choice,
-                    extra_off_x=extra_offset_x,
-                    extra_off_y=extra_offset_y,
-                    
-                    target_size=chosen_size,
-                    enhance_quality=enhance_quality_opt,
-                    sharpness_val=sharpness_slider_val,
-                    logo_pos_mode=logo_position_choice,
-                    logo_off_x=logo_offset_x,
-                    logo_off_y=logo_offset_y,
-                    enable_watermark_pattern=protect_watermark,
-                    color_preset=color_preset
-                )
-                saved_paths.append(processed_p)
-                if os.path.exists(temp_p): os.remove(temp_p)
-            
-            if album_choice == "📥 ألبوم صور مفرودة منفصلة":
-                st.success("🎉 تمت المعالجة وخلفية الـ Blur واللوجو جاهزة!")
-                for idx, p in enumerate(saved_paths): st.image(p, caption=f"🖼️ منتج رقم {idx+1}", use_container_width=True)
-            elif album_choice == "🖼️ تجميع في صورة واحدة (Collage)":
-                st.success("🎉 تم دمج الصور في كولاج شبكي!")
-                collage_result = create_image_collage(saved_paths, target_size=(1080, 1080) if not chosen_size else chosen_size)
-                st.image(collage_result, caption="📸 صورة الكولاج المجمعة", use_container_width=True)
-            else:
-                if total_target_video_duration and total_target_video_duration > 0:
-                    per_slide_duration = total_target_video_duration / len(saved_paths)
-                else:
-                    per_slide_duration = image_duration_per_slide
-
-                with st.spinner(f"🎬 جاري رندرة السلايد شو (مدة عرض الصورة الواحدة: {per_slide_duration:.1f} ثانية)..."):
-                    img_clips = [ImageClip(p).set_duration(per_slide_duration) for p in saved_paths]
-                    video_slideshow = concat_video_clips(img_clips, method="compose")
-                    
-                    if audio_mode == "رفع تراك أوديو MP3 مخصص من جهازك" and uploaded_custom_audio is not None:
-                        temp_audio_p2 = os.path.join(config.TMP_DIR, "user_custom_audio_slide.mp3")
-                        with open(temp_audio_p2, "wb") as f: f.write(uploaded_custom_audio.read())
-                        video_slideshow = video_slideshow.set_audio(AudioFileClip(temp_audio_p2).subclip(0, video_slideshow.duration))
-                    elif os.path.exists(config.CUSTOM_AUDIO_TRACK):
-                        video_slideshow = video_slideshow.set_audio(AudioFileClip(config.CUSTOM_AUDIO_TRACK).subclip(0, video_slideshow.duration))
+                    processed_p = process_image_template(
+                        temp_p, 
+                        blur_background=blur_bg_opt, 
+                        blur_intensity=blur_intensity_val, 
+                        opacity_val=logo_opacity,
+                        fit_auto_logo=fit_auto_logo,
+                        logo_custom_w=logo_custom_w,
+                        logo_custom_h=logo_custom_h,
                         
-                    video_slideshow_path = "images_slideshow_output.mp4"
-                    video_slideshow.write_videofile(video_slideshow_path, codec="libx264", fps=24, preset="ultrafast")
-                    st.video(video_slideshow_path)
+                        brand_text_scale=brand_text_scale,
+                        brand_color=brand_color,
+                        brand_pos=brand_position_choice,
+                        brand_off_x=brand_offset_x,
+                        brand_off_y=brand_offset_y,
+                        
+                        extra_text=extra_brand_suffix,
+                        extra_text_scale=extra_text_scale,
+                        extra_color=extra_color,
+                        extra_pos=extra_position_choice,
+                        extra_off_x=extra_offset_x,
+                        extra_off_y=extra_offset_y,
+                        
+                        target_size=chosen_size,
+                        enhance_quality=enhance_quality_opt,
+                        sharpness_val=sharpness_slider_val,
+                        quality_val=quality_slider_val,
+                        logo_pos_mode=logo_position_choice,
+                        logo_off_x=logo_offset_x,
+                        logo_off_y=logo_offset_y,
+                        enable_watermark_pattern=protect_watermark,
+                        color_preset=color_preset,
+                        enable_crop=enable_crop_opt,
+                        c_left=crop_l, c_top=crop_t, c_right=crop_r, c_bottom=crop_b
+                    )
+                    saved_paths.append(processed_p)
+                    if os.path.exists(temp_p): os.remove(temp_p)
+                
+                if album_choice == "📥 ألبوم صور مفرودة منفصلة":
+                    st.success("🎉 تمت المعالجة وخلفية الـ Blur واللوجو جاهزة!")
+                    for idx, p in enumerate(saved_paths): st.image(p, caption=f"🖼️ منتج رقم {idx+1}", use_container_width=True)
+                elif album_choice == "🖼️ تجميع في صورة واحدة (Collage)":
+                    st.success("🎉 تم دمج الصور في كولاج شبكي!")
+                    collage_result = create_image_collage(saved_paths, target_size=(1080, 1080) if not chosen_size else chosen_size)
+                    st.image(collage_result, caption="📸 صورة الكولاج المجمعة", use_container_width=True)
+                else:
+                    if total_target_video_duration and total_target_video_duration > 0:
+                        per_slide_duration = total_target_video_duration / len(saved_paths)
+                    else:
+                        per_slide_duration = image_duration_per_slide
+
+                    with st.spinner(f"🎬 جاري رندرة السلايد شو (مدة عرض الصورة الواحدة: {per_slide_duration:.1f} ثانية)..."):
+                        img_clips = [ImageClip(p).set_duration(per_slide_duration) for p in saved_paths]
+                        video_slideshow = concat_video_clips(img_clips, method="compose")
+                        
+                        if audio_mode == "رفع تراك أوديو MP3 مخصص من جهازك" and uploaded_custom_audio is not None:
+                            temp_audio_p2 = os.path.join(config.TMP_DIR, "user_custom_audio_slide.mp3")
+                            with open(temp_audio_p2, "wb") as f: f.write(uploaded_custom_audio.read())
+                            video_slideshow = video_slideshow.set_audio(AudioFileClip(temp_audio_p2).subclip(0, video_slideshow.duration))
+                        elif os.path.exists(config.CUSTOM_AUDIO_TRACK):
+                            video_slideshow = video_slideshow.set_audio(AudioFileClip(config.CUSTOM_AUDIO_TRACK).subclip(0, video_slideshow.duration))
+                            
+                        video_slideshow_path = "images_slideshow_output.mp4"
+                        video_slideshow.write_videofile(video_slideshow_path, codec="libx264", fps=24, preset="ultrafast")
+                        st.video(video_slideshow_path)
 
 # ==================== التبويب الثالث (الرادار والوصف والتسعير) ====================
 with tab3:
