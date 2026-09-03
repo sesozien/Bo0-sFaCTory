@@ -1,5 +1,5 @@
 streamlit
-pillow
+pillow<10.0.0
 moviepy==1.0.3
 yt-dlp
 requests
@@ -15,3 +15,4 @@ telethon
 pandas
 arabic-reshaper
 python-bidi
+extra-streamlit-components
