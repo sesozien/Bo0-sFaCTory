@@ -46,8 +46,9 @@ DEFAULT_SETTINGS = {
     "l_pos": "فوق يمين (Top-Right)",
     "l_ox": 0, "l_oy": 0,
     "logo_opacity": 0.8,
-    "logo_fit_auto": True,
-    "logo_custom_w": 200, "logo_custom_h": 200,
+    "logo_fit_auto": False,
+    "logo_custom_w": 200, 
+    "logo_custom_h": 200,
     "b_pos": "تحت شمال (Bottom-Left)",
     "b_ox": 0, "b_oy": 0,
     "b_sc": 0.035, "b_cl": "#FFD700",
@@ -107,7 +108,6 @@ st.markdown(f"""
 # =========================================================
 
 def apply_color_preset(pil_img, preset_name):
-    """تطبيق فلاتر ألوان خفيفة وسريعة بدون معالجة ثقيلة"""
     if preset_name == "زاهي ومشرق (Vibrant Product)":
         pil_img = ImageEnhance.Color(pil_img).enhance(1.35)
         pil_img = ImageEnhance.Contrast(pil_img).enhance(1.1)
@@ -239,7 +239,6 @@ def generate_auto_hashtags(product_name):
     return " ".join(base_tags)
 
 def enhance_image_quality(pil_img, sharpness_factor=2.0):
-    """تطبيق الحدوة والتباين بدقة وفعالية بدون تشويه"""
     if sharpness_factor > 0:
         sharpener = ImageEnhance.Sharpness(pil_img)
         pil_img = sharpener.enhance(1.0 + sharpness_factor)
@@ -248,7 +247,6 @@ def enhance_image_quality(pil_img, sharpness_factor=2.0):
     return pil_img
 
 def apply_image_crop(pil_img, c_left, c_top, c_right, c_bottom):
-    """قص حواف الصورة بناءً على قيم البكسل"""
     w, h = pil_img.size
     left = min(c_left, w - 1)
     top = min(c_top, h - 1)
@@ -257,7 +255,7 @@ def apply_image_crop(pil_img, c_left, c_top, c_right, c_bottom):
     return pil_img.crop((left, top, right, bottom))
 
 def process_image_template(image_path, blur_background=True, blur_intensity=12, opacity_val=0.8, 
-                           fit_auto_logo=True, logo_custom_w=200, logo_custom_h=200,
+                           fit_auto_logo=False, logo_custom_w=200, logo_custom_h=200,
                            brand_text_scale=0.035, brand_color="#FFD700", brand_pos="تحت شمال (Bottom-Left)", brand_off_x=0, brand_off_y=0,
                            extra_text="", extra_text_scale=0.025, extra_color="#FFFFFF", extra_pos="تحت يمين (Bottom-Right)", extra_off_x=0, extra_off_y=0,
                            target_size=None, enhance_quality=True, sharpness_val=2.0, quality_val=95, logo_pos_mode="فوق يمين (Top-Right)", logo_off_x=0, logo_off_y=0,
@@ -266,7 +264,6 @@ def process_image_template(image_path, blur_background=True, blur_intensity=12, 
     
     img = Image.open(image_path).convert("RGBA")
     
-    # 0. تطبيق القص (Crop) أولاً إن وجد
     if enable_crop and (c_left > 0 or c_top > 0 or c_right > 0 or c_bottom > 0):
         img = apply_image_crop(img, c_left, c_top, c_right, c_bottom)
 
@@ -308,10 +305,11 @@ def process_image_template(image_path, blur_background=True, blur_intensity=12, 
     if os.path.exists(config.ACTIVE_LOGO_PATH):
         logo = Image.open(config.ACTIVE_LOGO_PATH).convert("RGBA")
         
+        # تغيير حجم اللوجو بناءً على العرض والارتفاع المحددين
         if fit_auto_logo:
-            logo.thumbnail((int(w * 0.22), int(h * 0.12)), Image.Resampling.LANCZOS)
+            logo.thumbnail((int(w * (logo_custom_w / 1000.0)), int(h * (logo_custom_h / 1000.0))), Image.Resampling.LANCZOS)
         else:
-            logo = logo.resize((logo_custom_w, logo_custom_h), Image.Resampling.LANCZOS)
+            logo = logo.resize((max(10, logo_custom_w), max(10, logo_custom_h)), Image.Resampling.LANCZOS)
             
         r, g, b, a = logo.split()
         a = a.point(lambda p: int(p * opacity_val))
@@ -479,18 +477,20 @@ with st.sidebar:
     chosen_size = dim_map[platform_dimension]
 
     st.write("---")
-    st.markdown("### 🎯 1. التحكم في اللوجو المائي")
+    st.markdown("### 🎯 1. التحكم في حجم ومكان اللوجو المائي")
     logo_position_choice = st.selectbox("مكان اللوجو:", ["فوق يمين (Top-Right)", "فوق شمال (Top-Left)", "في المنتصف تماماً (Center)", "تحت يمين (Bottom-Right)", "تحت شمال (Bottom-Left)"], key="l_pos")
     logo_offset_x = st.slider("زق اللوجو أفقي (X):", -300, 300, key="l_ox")
     logo_offset_y = st.slider("زق اللوجو رأسي (Y):", -300, 300, key="l_oy")
     logo_opacity = st.slider("شفافية اللوجو:", 0.1, 1.0, key="logo_opacity")
     
-    fit_auto_logo = st.checkbox("التكيف التلقائي تناسباً مع الصورة (Auto Fit)", key="logo_fit_auto")
-    if not fit_auto_logo:
-        logo_custom_w = st.slider("عرض اللوجو (px):", 20, 800, key="logo_custom_w")
-        logo_custom_h = st.slider("ارتفاع اللوجو (px):", 20, 800, key="logo_custom_h")
-    else:
-        logo_custom_w, logo_custom_h = 200, 200
+    fit_auto_logo = st.checkbox("التكيف التلقائي مع أبعاد الصورة (Auto Fit)", key="logo_fit_auto")
+    
+    # تحكم منفصل في العرض والارتفاع للوجو
+    c_lw, c_lh = st.columns(2)
+    with c_lw:
+        logo_custom_w = st.slider("عرض اللوجو (px):", 10, 1000, key="logo_custom_w")
+    with c_lh:
+        logo_custom_h = st.slider("ارتفاع اللوجو (px):", 10, 1000, key="logo_custom_h")
 
     st.write("---")
     st.markdown("### 🏷️ 2. التحكم في اسم البراند")
@@ -616,12 +616,10 @@ with tab1:
             try:
                 clip = VideoFileClip(input_path)
                 
-                # 1. قص وتقطيع الفيديو (Trim)
                 if enable_trim:
                     end_val = clip.duration if trim_end <= 0 or trim_end > clip.duration else trim_end
                     clip = clip.subclip(min(trim_start, clip.duration - 1), end_val)
 
-                # 2. التسريع والمطابقة الزمنية (Speed Adjustment)
                 if speed_mode == "مُطابقة تلقائية مع مدة مستهدفة (Smart Speed-up)":
                     calculated_speed = clip.duration / float(target_video_duration_sec)
                     if calculated_speed > 0:
@@ -630,13 +628,11 @@ with tab1:
                     if manual_speed_factor != 1.0:
                         clip = clip.fx(vfx.speedx, manual_speed_factor)
 
-                # 3. تعديل المقاس والأبعاد حسب المنصة المختارة
                 if chosen_size: clip = clip.fx(vfx.resize, width=chosen_size[0], height=chosen_size[1])
                 else: clip = clip.fx(vfx.crop, x1=5, y1=5, x2=clip.w-5, y2=clip.h-5)
                     
                 modified_clip = clip.fx(vfx.colorx, 1.05)
                 
-                # 4. دمج الصوت
                 if audio_mode == "رفع تراك أوديو MP3 مخصص من جهازك" and uploaded_custom_audio is not None:
                     temp_audio_path = os.path.join(config.TMP_DIR, "user_custom_audio.mp3")
                     with open(temp_audio_path, "wb") as f: f.write(uploaded_custom_audio.read())
@@ -646,10 +642,9 @@ with tab1:
                     audio_overlay = AudioFileClip(config.CUSTOM_AUDIO_TRACK).subclip(0, modified_clip.duration)
                     modified_clip = modified_clip.set_audio(audio_overlay)
                 
-                # 5. إضافة اللوجو
                 if os.path.exists(config.ACTIVE_LOGO_PATH):
-                    v_logo_h = logo_custom_h if not fit_auto_logo else int(modified_clip.h * 0.12)
-                    v_logo_w = logo_custom_w if not fit_auto_logo else int(modified_clip.w * 0.22)
+                    v_logo_w = logo_custom_w
+                    v_logo_h = logo_custom_h
                     
                     vx, vy = calculate_element_position(modified_clip.w, modified_clip.h, v_logo_w, v_logo_h, logo_position_choice, logo_offset_x, logo_offset_y)
                     
@@ -673,7 +668,6 @@ with tab2:
     st.subheader("🖼️ مصنع تجميل صور المنتجات وفيديوهات السلايد شو الذكية")
     uploaded_images = st.file_uploader("ارفع الصور هنا:", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
     
-    # زر المعاينة قبل/بعد
     show_orig_toggle = st.checkbox("👁️ عرض الصور الأصلية (قبل التعديل للمعاينة)", value=False)
 
     if uploaded_images:
