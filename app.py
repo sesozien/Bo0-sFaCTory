@@ -367,12 +367,12 @@ def check_if_single_piece_text(text):
         if kw in text: return True
     return False
 
-# دالة استخراج الأسعار المحدثة مع خيار الاستبعاد
+# 💡 دالة استخراج الأسعار المحدثة الذكية مع الكلمات المظبوطة والكلمات المستبعدة (الجامدة جداً)
 def extract_original_price_only(text, max_limit=None, custom_keywords_str="", exclude_keywords_str=""):
     clean_text = re.sub(r'01[0125]\d{8}', '', text)
     clean_text = re.sub(r'\d+\s*(?:شارع|طريق|ميدان|دور|شقة|مكرر)', '', clean_text)
     
-    # 1. تنظيف الأرقام الملتصقة بكلمات محظورة (كود، موديل، سنة، إلخ)
+    # 1. تنظيف الأرقام الملتصقة بكلمات محظورة ومستبعدة يكتبها المستخدم (مثل: كود 500، موديل 2025، تواصل)
     default_exclude = ["كود", "موديل", "عام", "سنة", "تواصل", "رقم"]
     if exclude_keywords_str.strip():
         user_ex_words = [w.strip() for w in exclude_keywords_str.split(",") if w.strip()]
@@ -380,9 +380,12 @@ def extract_original_price_only(text, max_limit=None, custom_keywords_str="", ex
 
     for ex_word in default_exclude:
         ex_escaped = re.escape(ex_word)
+        # مسح النمط: الكلمة المستبعدة والرمز والرقم اللي بعدها لعدم اعتباره سعر
         clean_text = re.sub(ex_escaped + r'\s*[:\-=\s]*\s*\d+', '', clean_text, flags=re.IGNORECASE)
+        # مسح النمط: الرقم المتبوع بالكلمة المستبعدة
         clean_text = re.sub(r'\d+\s*' + ex_escaped, '', clean_text, flags=re.IGNORECASE)
 
+    # استبعاد السنوات الميلادية الافتراضية
     clean_text = clean_text.replace("2026", "").replace("2025", "").replace("2024", "")
 
     # 2. تجميع الكلمات الإيجابية للأسعار
@@ -785,7 +788,7 @@ with tab3:
         help="اكتب أي كلمات يظهر بعدها أو قبلها السعر في القنوات لتساعد الرادار في التقاط السعر بدقة"
     )
 
-    # 🛡️ 2. الخانة السلبية المانعة للمزاولة والأخطاء (تستبعد الرقم المجاور لها فورا)
+    # 🚫 2. الخانة السلبية المانعة للمزاولة والأخطاء (تستبعد الرقم المجاور لها فورا)
     exclude_price_keywords = st.text_input(
         "🛡️ كلمات مستبعدة يمنع اعتبار الرقم مجاوراً لها كسعر (افصل بفاصلة ,):",
         value="كود, موديل, تواصل, عام, سنة, مقاس, رقم",
@@ -976,3 +979,5 @@ with tab4:
             st.code(generated_post, language="markdown")
 
 st.markdown(f"<br><p style='text-align: center; color: #2a4d69; font-weight: bold;'>{config.DEVELOPER_SIGNATURE}</p>", unsafe_allow_html=True)
+
+```
