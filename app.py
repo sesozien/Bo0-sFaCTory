@@ -978,6 +978,4 @@ with tab4:
             st.markdown("#### 📋 البوست الجاهز للنسخ:")
             st.code(generated_post, language="markdown")
 
-st.markdown(f"<br><p style='text-align: center; color: #2a4d69; font-weight: bold;'>{config.DEVELOPER_SIGNATURE}</p>", unsafe_allow_html=True)
-
-```
+st.markdown(f"<br><p style='text-align: center; color: #2a4d69; font-weight: bold;'>{config.DEVELOPER_SIGNATURE}</p>", unsafe_allow_html=True
