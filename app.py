@@ -305,6 +305,7 @@ def process_image_template(image_path, blur_background=True, blur_intensity=12, 
     if os.path.exists(config.ACTIVE_LOGO_PATH):
         logo = Image.open(config.ACTIVE_LOGO_PATH).convert("RGBA")
         
+        # تغيير حجم اللوجو بناءً على العرض والارتفاع المحددين
         if fit_auto_logo:
             logo.thumbnail((int(w * (logo_custom_w / 1000.0)), int(h * (logo_custom_h / 1000.0))), Image.Resampling.LANCZOS)
         else:
@@ -367,38 +368,15 @@ def check_if_single_piece_text(text):
         if kw in text: return True
     return False
 
-# 💡 دالة استخراج الأسعار المحدثة الذكية مع الكلمات المظبوطة والكلمات المستبعدة (الجامدة جداً)
-def extract_original_price_only(text, max_limit=None, custom_keywords_str="", exclude_keywords_str=""):
+def extract_original_price_only(text, max_limit=None):
     clean_text = re.sub(r'01[0125]\d{8}', '', text)
     clean_text = re.sub(r'\d+\s*(?:شارع|طريق|ميدان|دور|شقة|مكرر)', '', clean_text)
-    
-    # 1. تنظيف الأرقام الملتصقة بكلمات محظورة ومستبعدة يكتبها المستخدم (مثل: كود 500، موديل 2025، تواصل)
-    default_exclude = ["كود", "موديل", "عام", "سنة", "تواصل", "رقم"]
-    if exclude_keywords_str.strip():
-        user_ex_words = [w.strip() for w in exclude_keywords_str.split(",") if w.strip()]
-        default_exclude.extend(user_ex_words)
-
-    for ex_word in default_exclude:
-        ex_escaped = re.escape(ex_word)
-        # مسح النمط: الكلمة المستبعدة والرمز والرقم اللي بعدها لعدم اعتباره سعر
-        clean_text = re.sub(ex_escaped + r'\s*[:\-=\s]*\s*\d+', '', clean_text, flags=re.IGNORECASE)
-        # مسح النمط: الرقم المتبوع بالكلمة المستبعدة
-        clean_text = re.sub(r'\d+\s*' + ex_escaped, '', clean_text, flags=re.IGNORECASE)
-
-    # استبعاد السنوات الميلادية الافتراضية
-    clean_text = clean_text.replace("2026", "").replace("2025", "").replace("2024", "")
-
-    # 2. تجميع الكلمات الإيجابية للأسعار
-    all_keywords = list(config.PRICE_KEYWORDS)
-    if custom_keywords_str.strip():
-        user_words = [w.strip() for w in custom_keywords_str.split(",") if w.strip()]
-        all_keywords.extend(user_words)
+    clean_text = clean_text.replace("2026", "").replace("2025", "")
     
     price_patterns = []
-    for kw in all_keywords:
-        kw_escaped = re.escape(kw)
-        price_patterns.append(kw_escaped + r'\s*[:\-=\s]*\s*(\d+)')
-        price_patterns.append(r'(\d+)\s*' + kw_escaped)
+    for kw in config.PRICE_KEYWORDS:
+        price_patterns.append(re.escape(kw) + r'\s*[:\-=\s]*\s*(\d+)')
+        price_patterns.append(r'(\d+)\s*' + re.escape(kw))
     
     for pattern in price_patterns:
         for match in re.finditer(pattern, clean_text):
@@ -406,7 +384,6 @@ def extract_original_price_only(text, max_limit=None, custom_keywords_str="", ex
             if max_limit and val > max_limit: continue
             return val, match.group(1)
             
-    # Fallback للمتبقي
     all_numbers = re.findall(r'\d+', clean_text)
     for num_str in all_numbers:
         val = int(num_str)
@@ -508,6 +485,7 @@ with st.sidebar:
     
     fit_auto_logo = st.checkbox("التكيف التلقائي مع أبعاد الصورة (Auto Fit)", key="logo_fit_auto")
     
+    # تحكم منفصل في العرض والارتفاع للوجو
     c_lw, c_lh = st.columns(2)
     with c_lw:
         logo_custom_w = st.slider("عرض اللوجو (px):", 10, 1000, key="logo_custom_w")
@@ -779,23 +757,6 @@ with tab3:
     col1, col2 = st.columns(2)
     with col1: price_inc_rate = st.number_input("نسبة زيادة السعر (%):", min_value=0, max_value=100, value=config.DEFAULT_PRICE_INC_RATE)
     with col2: box_items_count = st.number_input("عدد القطع بالعلبة:", min_value=1, max_value=100, value=config.DEFAULT_BOX_ITEMS_COUNT)
-    
-    # 💡 1. الخانة الإيجابية لالتقاط السعر
-    extra_price_keywords = st.text_input(
-        "💡 كلمات دلالية إيجابية لكشف السعر (افصل بين الكلمات بفاصلة ,):",
-        value="",
-        placeholder="مثال: جملتها, بسعر, المطلوب, بـ",
-        help="اكتب أي كلمات يظهر بعدها أو قبلها السعر في القنوات لتساعد الرادار في التقاط السعر بدقة"
-    )
-
-    # 🚫 2. الخانة السلبية المانعة للمزاولة والأخطاء (تستبعد الرقم المجاور لها فورا)
-    exclude_price_keywords = st.text_input(
-        "🛡️ كلمات مستبعدة يمنع اعتبار الرقم مجاوراً لها كسعر (افصل بفاصلة ,):",
-        value="كود, موديل, تواصل, عام, سنة, مقاس, رقم",
-        placeholder="مثال: كود, موديل, مقاس, فون, كود رقم",
-        help="أي رقم يظهر بجوار هذه الكلمات سيقوم الرادار بحظره وتجاهله فوراً لحمايتك من الأخطاء والمزاولة"
-    )
-
     fb_profile_link = st.text_input("رابط صفحتك للتواصل:", value="https://www.facebook.com/montgk1")
     
     max_price_threshold = st.number_input("الحد الأقصى للسعر:", min_value=1, max_value=9999999, value=5000)
@@ -852,12 +813,7 @@ with tab3:
                                     if match: photo_url = match.group(1)
                                 if photo_url and photo_url.startswith('//'): photo_url = 'https:' + photo_url
                                     
-                                auto_price, old_str = extract_original_price_only(
-                                    p_text, 
-                                    max_limit=max_price_threshold, 
-                                    custom_keywords_str=extra_price_keywords,
-                                    exclude_keywords_str=exclude_price_keywords
-                                )
+                                auto_price, old_str = extract_original_price_only(p_text, max_limit=max_price_threshold)
                                 temp_collected.append({"text": p_text, "image": photo_url, "auto_price": auto_price, "old_str": old_str})
                         
                         st.session_state["cached_posts"] = temp_collected
@@ -870,12 +826,7 @@ with tab3:
         uploaded_image = st.file_uploader("الصورة:")
         if st.button("⚡ تعديل فوراً"):
             if forwarded_text:
-                auto_price, old_str = extract_original_price_only(
-                    forwarded_text, 
-                    max_limit=max_price_threshold, 
-                    custom_keywords_str=extra_price_keywords,
-                    exclude_keywords_str=exclude_price_keywords
-                )
+                auto_price, old_str = extract_original_price_only(forwarded_text, max_limit=max_price_threshold)
                 st.session_state["cached_posts"] = [{"text": forwarded_text, "image": uploaded_image, "auto_price": auto_price, "old_str": old_str}]
 
     if st.session_state["cached_posts"]:
@@ -978,4 +929,4 @@ with tab4:
             st.markdown("#### 📋 البوست الجاهز للنسخ:")
             st.code(generated_post, language="markdown")
 
-st.markdown(f"<br><p style='text-align: center; color: #2a4d69; font-weight: bold;'>{config.DEVELOPER_SIGNATURE}</p>", unsafe_allow_html=True) 
+st.markdown(f"<br><p style='text-align: center; color: #2a4d69; font-weight: bold;'>{config.DEVELOPER_SIGNATURE}</p>", unsafe_allow_html=True)
