@@ -68,7 +68,9 @@ DEFAULT_SETTINGS = {
     "crop_left": 0,
     "crop_top": 0,
     "crop_right": 0,
-    "crop_bottom": 0
+    "crop_bottom": 0,
+    "enable_trim_key": False,
+    "show_orig_key": False
 }
 
 for k, v in DEFAULT_SETTINGS.items():
@@ -305,7 +307,6 @@ def process_image_template(image_path, blur_background=True, blur_intensity=12, 
     if os.path.exists(config.ACTIVE_LOGO_PATH):
         logo = Image.open(config.ACTIVE_LOGO_PATH).convert("RGBA")
         
-        # تغيير حجم اللوجو بناءً على العرض والارتفاع المحددين
         if fit_auto_logo:
             logo.thumbnail((int(w * (logo_custom_w / 1000.0)), int(h * (logo_custom_h / 1000.0))), Image.Resampling.LANCZOS)
         else:
@@ -483,9 +484,9 @@ with st.sidebar:
     logo_offset_y = st.slider("زق اللوجو رأسي (Y):", -300, 300, key="l_oy")
     logo_opacity = st.slider("شفافية اللوجو:", 0.1, 1.0, key="logo_opacity")
     
+    # --- إصلاح مربع التكيف التلقائي للوجو ---
     fit_auto_logo = st.checkbox("التكيف التلقائي مع أبعاد الصورة (Auto Fit)", key="logo_fit_auto")
     
-    # تحكم منفصل في العرض والارتفاع للوجو
     c_lw, c_lh = st.columns(2)
     with c_lw:
         logo_custom_w = st.slider("عرض اللوجو (px):", 10, 1000, key="logo_custom_w")
@@ -522,6 +523,8 @@ with st.sidebar:
 
     st.write("---")
     st.markdown("### 🖼️ 5. فلاتر الصور، الجودة والقص")
+    
+    # --- إصلاح مربعات الاختيار بالكامل مع ربط المفاتيح صح ---
     blur_bg_opt = st.checkbox("تفعيل خلفية Blur من نفس الصورة", key="blur_bg")
     blur_intensity_val = st.slider("قوة تغبيش الخلفية (Blur Radius):", 1, 30, key="blur_val")
     enhance_quality_opt = st.checkbox("تفعيل فلتر الجودة والحدة 🚀", key="enhance_opt")
@@ -580,7 +583,7 @@ with tab1:
     ready_to_process = False
 
     st.markdown("#### ✂️ 1. أداة قص وتقطيع جزء معين من الفيديو (Trimmer)")
-    enable_trim = st.checkbox("تفعيل قص جزء محدد من الفيديو", value=False)
+    enable_trim = st.checkbox("تفعيل قص جزء محدد من الفيديو", key="enable_trim_key")
     c_t1, c_t2 = st.columns(2)
     with c_t1: trim_start = st.number_input("بداية القص (بالثواني):", min_value=0, value=0)
     with c_t2: trim_end = st.number_input("نهاية القص (بالثواني - 0 للكل):", min_value=0, value=0)
@@ -666,9 +669,10 @@ with tab1:
 # ==================== التبويب الثاني (قوالب الصور والفيديو المتحرك) ====================
 with tab2:
     st.subheader("🖼️ مصنع تجميل صور المنتجات وفيديوهات السلايد شو الذكية")
-    uploaded_images = st.file_uploader("ارفع الصور هنا:", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
     
-    show_orig_toggle = st.checkbox("👁️ عرض الصور الأصلية (قبل التعديل للمعاينة)", value=False)
+    uploaded_images = st.file_uploader("ارفع الصور هنا (يمكنك تحديد صورة أو أكثر):", type=["jpg", "jpeg", "png"], accept_multiple_files=True, key="multi_img_uploader")
+    
+    show_orig_toggle = st.checkbox("👁️ عرض الصور الأصلية (قبل التعديل للمعاينة)", key="show_orig_key")
 
     if uploaded_images:
         if len(uploaded_images) > 1:
@@ -676,7 +680,7 @@ with tab2:
         else: album_choice = "📥 ألبوم صور مفرودة منفصلة"
 
         if show_orig_toggle:
-            st.info("📷 الصورة الأصلية بدون أي إضافات أو تعديلات:")
+            st.info("📷 الصور الأصلية بدون أي إضافات أو تعديلات:")
             for idx, img_f in enumerate(uploaded_images):
                 st.image(img_f, caption=f"أصل صورة {idx+1}", use_container_width=True)
         else:
@@ -823,7 +827,7 @@ with tab3:
                 except Exception as e: st.error(f"خطأ: {str(e)}")
     else:
         forwarded_text = st.text_area("نص البوست:")
-        uploaded_image = st.file_uploader("الصورة:")
+        uploaded_image = st.file_uploader("الصورة:", key="forward_single_img_uploader")
         if st.button("⚡ تعديل فوراً"):
             if forwarded_text:
                 auto_price, old_str = extract_original_price_only(forwarded_text, max_limit=max_price_threshold)
