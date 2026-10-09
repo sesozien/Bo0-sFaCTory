@@ -36,9 +36,21 @@ st.set_page_config(page_title=config.PAGE_TITLE, page_icon=config.PAGE_ICON, lay
 
 current_channels = config.load_and_sync_channels()
 
-if not os.path.exists(config.DEFAULT_LOGO_PATH):
+# دالة فحص وتأمين ملفات الصور لمنع أخطاء OSError
+def ensure_valid_image(image_path):
+    if not os.path.exists(image_path):
+        return False
+    try:
+        with Image.open(image_path) as img:
+            img.verify()
+        return True
+    except Exception:
+        return False
+
+if not ensure_valid_image(config.DEFAULT_LOGO_PATH):
     Image.new('RGBA', (200, 200), color=(255, 75, 75, 255)).save(config.DEFAULT_LOGO_PATH)
-if not os.path.exists(config.ACTIVE_LOGO_PATH):
+
+if not ensure_valid_image(config.ACTIVE_LOGO_PATH):
     Image.open(config.DEFAULT_LOGO_PATH).save(config.ACTIVE_LOGO_PATH)
 
 # --- نظام حفظ واسترجاع الإعدادات الافتراضية الشامل ---
@@ -304,20 +316,23 @@ def process_image_template(image_path, blur_background=True, blur_intensity=12, 
 
     w, h = img.size
 
-    if os.path.exists(config.ACTIVE_LOGO_PATH):
-        logo = Image.open(config.ACTIVE_LOGO_PATH).convert("RGBA")
-        
-        if fit_auto_logo:
-            logo.thumbnail((int(w * (logo_custom_w / 1000.0)), int(h * (logo_custom_h / 1000.0))), Image.Resampling.LANCZOS)
-        else:
-            logo = logo.resize((max(10, logo_custom_w), max(10, logo_custom_h)), Image.Resampling.LANCZOS)
+    if ensure_valid_image(config.ACTIVE_LOGO_PATH):
+        try:
+            logo = Image.open(config.ACTIVE_LOGO_PATH).convert("RGBA")
             
-        r, g, b, a = logo.split()
-        a = a.point(lambda p: int(p * opacity_val))
-        logo_transparent = Image.merge("RGBA", (r, g, b, a))
-        
-        lx, ly = calculate_element_position(w, h, logo.size[0], logo.size[1], logo_pos_mode, logo_off_x, logo_off_y)
-        img.paste(logo_transparent, (lx, ly), logo_transparent)
+            if fit_auto_logo:
+                logo.thumbnail((int(w * (logo_custom_w / 1000.0)), int(h * (logo_custom_h / 1000.0))), Image.Resampling.LANCZOS)
+            else:
+                logo = logo.resize((max(10, logo_custom_w), max(10, logo_custom_h)), Image.Resampling.LANCZOS)
+                
+            r, g, b, a = logo.split()
+            a = a.point(lambda p: int(p * opacity_val))
+            logo_transparent = Image.merge("RGBA", (r, g, b, a))
+            
+            lx, ly = calculate_element_position(w, h, logo.size[0], logo.size[1], logo_pos_mode, logo_off_x, logo_off_y)
+            img.paste(logo_transparent, (lx, ly), logo_transparent)
+        except Exception:
+            pass
 
     base_brand_text = st.session_state.get("dynamic_brand_text", "Montgk Brand")
     calc_b_size = max(14, int(h * brand_text_scale))
@@ -484,7 +499,6 @@ with st.sidebar:
     logo_offset_y = st.slider("زق اللوجو رأسي (Y):", -300, 300, key="l_oy")
     logo_opacity = st.slider("شفافية اللوجو:", 0.1, 1.0, key="logo_opacity")
     
-    # --- إصلاح مربع التكيف التلقائي للوجو ---
     fit_auto_logo = st.checkbox("التكيف التلقائي مع أبعاد الصورة (Auto Fit)", key="logo_fit_auto")
     
     c_lw, c_lh = st.columns(2)
@@ -523,8 +537,6 @@ with st.sidebar:
 
     st.write("---")
     st.markdown("### 🖼️ 5. فلاتر الصور، الجودة والقص")
-    
-    # --- إصلاح مربعات الاختيار بالكامل مع ربط المفاتيح صح ---
     blur_bg_opt = st.checkbox("تفعيل خلفية Blur من نفس الصورة", key="blur_bg")
     blur_intensity_val = st.slider("قوة تغبيش الخلفية (Blur Radius):", 1, 30, key="blur_val")
     enhance_quality_opt = st.checkbox("تفعيل فلتر الجودة والحدة 🚀", key="enhance_opt")
@@ -542,13 +554,22 @@ with st.sidebar:
     else:
         crop_l = crop_t = crop_r = crop_b = 0
 
-    if os.path.exists(config.ACTIVE_LOGO_PATH):
-        st.image(config.ACTIVE_LOGO_PATH, caption="اللوجو النشط", width=100)
+    # معالجة آمنة لعرض واستبدال اللوجو
+    if ensure_valid_image(config.ACTIVE_LOGO_PATH):
+        try:
+            st.image(config.ACTIVE_LOGO_PATH, caption="اللوجو النشط", width=100)
+        except Exception:
+            pass
+            
     uploaded_logo = st.file_uploader("تغيير اللوجو:", type=["png", "jpg", "jpeg"])
     if uploaded_logo is not None:
-        Image.open(uploaded_logo).save(config.ACTIVE_LOGO_PATH)
-        st.success("✅ تم التحديث!")
-        st.rerun()
+        try:
+            img = Image.open(uploaded_logo)
+            img.save(config.ACTIVE_LOGO_PATH)
+            st.success("✅ تم التحديث!")
+            st.rerun()
+        except Exception as e:
+            st.error(f"ملف اللوجو المرفوع غير صالح: {str(e)}")
 
     st.write("---")
     audio_mode = st.radio("مصدر الصوت:", ["تراك المزيكا الحصري التلقائي", "رفع تراك أوديو MP3 مخصص من جهازك"])
@@ -645,7 +666,7 @@ with tab1:
                     audio_overlay = AudioFileClip(config.CUSTOM_AUDIO_TRACK).subclip(0, modified_clip.duration)
                     modified_clip = modified_clip.set_audio(audio_overlay)
                 
-                if os.path.exists(config.ACTIVE_LOGO_PATH):
+                if ensure_valid_image(config.ACTIVE_LOGO_PATH):
                     v_logo_w = logo_custom_w
                     v_logo_h = logo_custom_h
                     
