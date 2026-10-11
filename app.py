@@ -833,4 +833,162 @@ with tab3:
                         three_days_ago_date = today_date - timedelta(days=3)
 
                         for msg in reversed(messages):
-                            text_div = msg
+                            text_div = msg.find("div", {"class": "tgme_widget_message_text"})
+                            if not text_div: text_div = msg.find("div", class_=lambda x: x and 'message_text' in x)
+                            time_tag = msg.find("time")
+                            if text_div:
+                                post_date = today_date
+                                if time_tag and time_tag.get("datetime"):
+                                    try:
+                                        iso_date_str = time_tag.get("datetime").split("T")[0]
+                                        post_date = datetime.strptime(iso_date_str, "%Y-%m-%d").date()
+                                    except: pass
+                                
+                                if date_filter == "اليوم فقط" and post_date != today_date: continue
+                                if date_filter == "الأمس واليوم" and post_date not in [today_date, yesterday_date]: continue
+                                if date_filter == "قبل أمس والـ 3 أيام الأخيرة" and post_date not in [today_date, yesterday_date, before_yesterday_date, three_days_ago_date]: continue
+                                
+                                p_text = text_div.text.strip()
+                                photo_url = None
+                                photo_tag = msg.find("a", {"class": "tgme_widget_message_photo_wrap"})
+                                if not photo_tag: photo_tag = msg.find("a", class_=lambda x: x and 'message_photo' in x)
+                                    
+                                if photo_tag:
+                                    style = photo_tag.get("style", "")
+                                    match = re.search(r"url\(['\"]?(.*?)['\"]?\)", style)
+                                    if match: photo_url = match.group(1)
+                                if photo_url and photo_url.startswith('//'): photo_url = 'https:' + photo_url
+                                    
+                                auto_price, old_str = extract_original_price_only(p_text, max_limit=max_price_threshold)
+                                temp_collected.append({"text": p_text, "image": photo_url, "auto_price": auto_price, "old_str": old_str})
+                        
+                        st.session_state["cached_posts"] = temp_collected
+                        if not temp_collected: st.warning("⚠️ لا توجد بوستات مطابقة.")
+                        else: st.success(f"🎯 تم قنص {len(temp_collected)} بوست!")
+                    else: st.error(f"❌ خطأ: {res.status_code}")
+                except Exception as e: st.error(f"خطأ: {str(e)}")
+    else:
+        forwarded_text = st.text_area("نص البوست:", key="manual_fwd_text")
+        uploaded_image = st.file_uploader("الصورة:", key="forward_single_img_uploader")
+        if st.button("⚡ تعديل فوراً", key="manual_fwd_btn"):
+            if forwarded_text:
+                auto_price, old_str = extract_original_price_only(forwarded_text, max_limit=max_price_threshold)
+                st.session_state["cached_posts"] = [{"text": forwarded_text, "image": uploaded_image, "auto_price": auto_price, "old_str": old_str}]
+
+    if st.session_state["cached_posts"]:
+        st.write("---")
+        if st.button("📊 توليد شيت إكسيل Montgk", key="gen_excel_btn"):
+            excel_data_list = []
+            for i, item in enumerate(st.session_state["cached_posts"]):
+                excel_data_list.append({
+                    "رقم المنتج": i + 1,
+                    "اسم الصورة المائية": f"watermarked_product_{i+1}.jpg",
+                    "اسم المنتج": "",
+                    "السعر الجديد": "",
+                    "الوصف المقترح": ""
+                })
+            df_excel = pd.DataFrame(excel_data_list)
+            output_io = io.BytesIO()
+            with pd.ExcelWriter(output_io, engine='openpyxl') as writer: df_excel.to_excel(writer, index=False, sheet_name="Montgk")
+            st.success("✅ الشيت جاهز!")
+            st.download_button(label="📥 تحميل Excel", data=output_io.getvalue(), file_name="Montgk_Platform_Products.xlsx", key="download_excel_btn")
+        st.write("---")
+
+        for idx, item in enumerate(st.session_state["cached_posts"]):
+            st.markdown(f"#### 📦 منتج رقم {idx + 1}")
+            if item["image"]: st.image(item["image"], width=250)
+            
+            is_single_piece = check_if_single_piece_text(item["text"])
+            if is_single_piece: st.warning("🎯 سعر قطعة منفردة!")
+            
+            chosen_orig_price = st.number_input(
+                f"✍️ السعر الأصلي {idx+1}:", 
+                min_value=0, max_value=2000000000, value=int(item["auto_price"]), key=f"manual_price_{idx}"
+            )
+            
+            base_new_price = int(chosen_orig_price * (1 + (price_inc_rate / 100)))
+            
+            if is_single_piece:
+                piece_p = base_new_price
+                estimated_box_price = base_new_price * box_items_count
+                price_status_note = f"📌 سعر القطعة واصل عليك بـ {piece_p} ج بس! 🔥 (سعر العلبة الكاملة جملة تقريبي: {estimated_box_price} ج)"
+            else:
+                piece_p = round(base_new_price / box_items_count, 1)
+                if piece_p.is_integer(): piece_p = int(piece_p)
+                price_status_note = f"📌 سعر القطعة واصل عليك بـ {piece_p} ج بس! 🔥"
+            
+            temp_post_text = item["text"]
+            temp_post_text = re.sub(r'#\w+', '', temp_post_text)
+            temp_post_text = re.sub(r'http[s]?://\S+|www\.\S+', '', temp_post_text)
+            
+            if item["old_str"] and item["old_str"] in temp_post_text: final_clean_text = temp_post_text.replace(item["old_str"], str(base_new_price), 1)
+            else: final_clean_text = temp_post_text + f"\n سعر العرض الجديد: {base_new_price} ج"
+            
+            smart_ai_proposal = generate_smart_ai_description(item["text"])
+            auto_hashtags = generate_auto_hashtags(item["text"][:15])
+            
+            st.info("💡 **الوصف الذكي والهاشتاجات المقترحة:**")
+            st.caption(smart_ai_proposal)
+            st.code(auto_hashtags, language="markdown")
+            
+            apply_ai = st.checkbox("🔄 اعتماد الوصف الذكي؟", value=False, key=f"ai_check_{idx}")
+            chosen_description = smart_ai_proposal if apply_ai else final_clean_text
+            
+            final_commercial_post = (
+                f"{chosen_description}\n\n"
+                f"{price_status_note}\n\n"
+                f"🎁 **خصم خاص للكميات وأصحاب المحلات!** 💣🔥\n\n"
+                f"🔗 للتواصل وطلب المنتج كاش فوراً: {fb_profile_link}\n\n"
+                f"{auto_hashtags}"
+            )
+            
+            edited_post_content = st.text_area(f"📋 البوست الجاهز والمقابل للتعديل {idx + 1}:", value=final_commercial_post, height=200, key=f"post_area_{idx}")
+            
+            pub_col1, pub_col2 = st.columns([2, 1])
+            with pub_col1:
+                target_pub_channel = st.text_input(f"يوزر القناة للنشر (منتج {idx+1}):", value=current_channels[0] if current_channels else "montgk", key=f"pub_ch_{idx}")
+            with pub_col2:
+                st.write("")
+                st.write("")
+                if st.button(f"🚀 نشر الآن #{idx+1}", key=f"send_tg_btn_{idx}"):
+                    img_to_send = item["image"] if isinstance(item["image"], str) else None
+                    success, msg = send_telegram_post(config.TELEGRAM_BOT_TOKEN, target_pub_channel, edited_post_content, img_to_send)
+                    if success:
+                        st.success(msg)
+                    else:
+                        st.error(msg)
+                        
+            st.markdown("---")
+
+# ==================== التبويب الرابع (🔥 رادار الترندات واسطمبات البوستات) ====================
+with tab4:
+    st.subheader("🔍 رادار المنتجات الأكثر بحثاً في مصر واسطمبات الرسائل الذكية")
+    st.write("اكتشف المنتجات والكلمات التريند في السوق المصري فوراً، وانسخ اسطمبة البوست الجاهزة المدمجة بعرضك!")
+
+    cat = st.selectbox("اختر مجالك / قسم المنتجات:", ["الكل", "أزياء وموضة", "إلكترونيات"], key="trend_cat_select")
+    trends_info = fetch_egypt_trends(cat)
+
+    col_t1, col_t2 = st.columns(2)
+
+    with col_t1:
+        st.markdown("#### 📈 المنتجات الأكثر بحثاً حالياً (مصر)")
+        selected_prod = st.radio("اختر المنتج التريند لربطه بالبوست:", trends_info["products"], key="prod_trend_radio")
+        
+        st.markdown("#### 🏷️ الهاشتاجات الأكثر استخداماً اللحظة دي")
+        st.info(" ".join(trends_info["hashtags"]))
+
+    with col_t2:
+        st.markdown("#### ✍️ مضمون الرسالة / العرض الخاص بك")
+        user_body = st.text_area(
+            "اكتب تفاصيل العرض أو السعر أو المميزات هنا:",
+            value="خصم 20% لفترة محدودة جداً! التوصيل مجاني لأول 50 أوردر اليوم مع إمكانية المعاينة قبل الاستلام.",
+            height=140,
+            key="user_offer_body"
+        )
+        
+        if st.button("🚀 توليد اسطمبة البوست الجاهزة", key="gen_post_btn"):
+            generated_post = generate_post_template(user_body, cat, selected_prod)
+            st.markdown("#### 📋 البوست الجاهز للنسخ:")
+            st.code(generated_post, language="markdown")
+
+st.markdown(f"<br><p style='text-align: center; color: #2a4d69; font-weight: bold;'>{config.DEVELOPER_SIGNATURE}</p>", unsafe_allow_html=True)
