@@ -36,7 +36,6 @@ st.set_page_config(page_title=config.PAGE_TITLE, page_icon=config.PAGE_ICON, lay
 
 current_channels = config.load_and_sync_channels()
 
-# دالة فحص وتأمين ملفات الصور لمنع أخطاء OSError
 def ensure_valid_image(image_path):
     if not os.path.exists(image_path):
         return False
@@ -52,42 +51,6 @@ if not ensure_valid_image(config.DEFAULT_LOGO_PATH):
 
 if not ensure_valid_image(config.ACTIVE_LOGO_PATH):
     Image.open(config.DEFAULT_LOGO_PATH).save(config.ACTIVE_LOGO_PATH)
-
-# --- نظام حفظ واسترجاع الإعدادات الافتراضية الشامل ---
-DEFAULT_SETTINGS = {
-    "l_pos": "فوق يمين (Top-Right)",
-    "l_ox": 0, "l_oy": 0,
-    "logo_opacity": 0.8,
-    "logo_fit_auto": False,
-    "logo_custom_w": 200, 
-    "logo_custom_h": 200,
-    "b_pos": "تحت شمال (Bottom-Left)",
-    "b_ox": 0, "b_oy": 0,
-    "b_sc": 0.035, "b_cl": "#FFD700",
-    "e_pos": "تحت يمين (Bottom-Right)",
-    "e_ox": 0, "e_oy": 0,
-    "e_sc": 0.025, "e_cl": "#FFFFFF",
-    "slide_dur": 3,
-    "blur_bg": True,
-    "blur_val": 15,
-    "enhance_opt": True,
-    "sharp_val": 2.0,
-    "quality_val": 95,
-    "color_preset": "طبيعي (بدون فلتر)",
-    "dynamic_brand_text": "Montgk Brand",
-    "enable_watermark_pattern": False,
-    "enable_crop": False,
-    "crop_left": 0,
-    "crop_top": 0,
-    "crop_right": 0,
-    "crop_bottom": 0,
-    "enable_trim_key": False,
-    "show_orig_key": False
-}
-
-for k, v in DEFAULT_SETTINGS.items():
-    if k not in st.session_state:
-        st.session_state[k] = v
 
 st.markdown("""
     <style>
@@ -310,7 +273,7 @@ def process_image_template(image_path, blur_background=True, blur_intensity=12, 
             
             fg = img.copy()
             fg.thumbnail((int(w * 0.9), int(h * 0.9)), Image.Resampling.LANCZOS)
-            offset = ((w - fg.size[0]) // 2, (h - fg.size[1]) // 2)
+            offset = ((w - fg.size[0]) // 2, (th - fg.size[1]) // 2)
             bg.paste(fg, offset, fg)
             img = bg
 
@@ -448,7 +411,7 @@ def generate_post_template(body_text, category, selected_product):
 ⚡ **ليه تشتري من {brand_name}؟**
 ✅ جودة ممتازة مضمونة 100%
 ✅ توصيل سريع لجميع محافظات مصر 🇪🇬
-✅ معاينة المنتج قبل الاستلام والادفع عند الاستلام
+✅ معاينة المنتج قبل الاستلام والدفع عند الاستلام
 
 📲 **للطلب أو الاستفسار:** ارسل لنا رسالة الآن على الخاص أو عبر الواتساب!
 
@@ -456,6 +419,31 @@ def generate_post_template(body_text, category, selected_product):
 {hashtags_str}
 """
     return template
+
+# دالة النشر المباشر عبر تليجرام البوت
+def send_telegram_post(bot_token, channel_username, text_message, image_url=None):
+    if not bot_token or bot_token == "ضع_التوكن_الافتراضي_هنا":
+        return False, "❌ توكن بوت تليجرام غير مسجل في الإعدادات أو ملف البيئة!"
+    
+    channel_target = channel_username if channel_username.startswith("@") else f"@{channel_username}"
+    
+    try:
+        if image_url and image_url.startswith("http"):
+            url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
+            payload = {"chat_id": channel_target, "photo": image_url, "caption": text_message, "parse_mode": "Markdown"}
+            r = requests.post(url, data=payload, timeout=15)
+        else:
+            url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+            payload = {"chat_id": channel_target, "text": text_message, "parse_mode": "Markdown"}
+            r = requests.post(url, data=payload, timeout=15)
+            
+        res_json = r.json()
+        if res_json.get("ok"):
+            return True, "✅ تم نشر البوست بنجاح على القناة!"
+        else:
+            return False, f"❌ خطأ من تليجرام: {res_json.get('description', 'غير معروف')}"
+    except Exception as e:
+        return False, f"❌ حدث خطأ في الاتصال: {str(e)}"
 
 # ==================== 🛠️ لوحة التحكم الجانبية ====================
 with st.sidebar:
@@ -474,8 +462,7 @@ with st.sidebar:
     st.markdown("### 🎨 فلاتر الألوان الذكية الخفيفة")
     color_preset = st.selectbox(
         "اختر فلتر لتحسين الصورة:",
-        ["طبيعي (بدون فلتر)", "زاهي ومشرق (Vibrant Product)", "تباين دافئ (Warm Pop)", "سينمائي داكن (Cinematic Dark)", "أبيض وأسود فاخر (Black & White)"],
-        key="color_preset"
+        ["طبيعي (بدون فلتر)", "زاهي ومشرق (Vibrant Product)", "تباين دافئ (Warm Pop)", "سينمائي داكن (Cinematic Dark)", "أبيض وأسود فاخر (Black & White)"]
     )
 
     st.write("---")
@@ -494,36 +481,36 @@ with st.sidebar:
 
     st.write("---")
     st.markdown("### 🎯 1. التحكم في حجم ومكان اللوجو المائي")
-    logo_position_choice = st.selectbox("مكان اللوجو:", ["فوق يمين (Top-Right)", "فوق شمال (Top-Left)", "في المنتصف تماماً (Center)", "تحت يمين (Bottom-Right)", "تحت شمال (Bottom-Left)"], key="l_pos")
-    logo_offset_x = st.slider("زق اللوجو أفقي (X):", -300, 300, key="l_ox")
-    logo_offset_y = st.slider("زق اللوجو رأسي (Y):", -300, 300, key="l_oy")
-    logo_opacity = st.slider("شفافية اللوجو:", 0.1, 1.0, key="logo_opacity")
+    logo_position_choice = st.selectbox("مكان اللوجو:", ["فوق يمين (Top-Right)", "فوق شمال (Top-Left)", "في المنتصف تماماً (Center)", "تحت يمين (Bottom-Right)", "تحت شمال (Bottom-Left)"])
+    logo_offset_x = st.slider("زق اللوجو أفقي (X):", -300, 300, value=0)
+    logo_offset_y = st.slider("زق اللوجو رأسي (Y):", -300, 300, value=0)
+    logo_opacity = st.slider("شفافية اللوجو:", 0.1, 1.0, value=0.8)
     
-    fit_auto_logo = st.checkbox("التكيف التلقائي مع أبعاد الصورة (Auto Fit)", key="logo_fit_auto")
+    fit_auto_logo = st.checkbox("التكيف التلقائي مع أبعاد الصورة (Auto Fit)")
     
     c_lw, c_lh = st.columns(2)
     with c_lw:
-        logo_custom_w = st.slider("عرض اللوجو (px):", 10, 1000, key="logo_custom_w")
+        logo_custom_w = st.slider("عرض اللوجو (px):", 10, 1000, value=200)
     with c_lh:
-        logo_custom_h = st.slider("ارتفاع اللوجو (px):", 10, 1000, key="logo_custom_h")
+        logo_custom_h = st.slider("ارتفاع اللوجو (px):", 10, 1000, value=200)
 
     st.write("---")
     st.markdown("### 🏷️ 2. التحكم في اسم البراند")
-    input_brand_text = st.text_input("نص البراند:", key="dynamic_brand_text")
-    brand_position_choice = st.selectbox("مكان اسم البراند:", ["تحت شمال (Bottom-Left)", "تحت يمين (Bottom-Right)", "فوق شمال (Top-Left)", "فوق يمين (Top-Right)", "في المنتصف تماماً (Center)"], key="b_pos")
-    brand_offset_x = st.slider("زق البراند أفقي (X):", -300, 300, key="b_ox")
-    brand_offset_y = st.slider("زق البراند رأسي (Y):", -300, 300, key="b_oy")
-    brand_text_scale = st.slider("حجم خط البراند:", 0.015, 0.080, key="b_sc")
-    brand_color = st.color_picker("لون خط البراند:", key="b_cl")
+    input_brand_text = st.text_input("نص البراند:", value="Montgk Brand")
+    brand_position_choice = st.selectbox("مكان اسم البراند:", ["تحت شمال (Bottom-Left)", "تحت يمين (Bottom-Right)", "فوق شمال (Top-Left)", "فوق يمين (Top-Right)", "في المنتصف تماماً (Center)"])
+    brand_offset_x = st.slider("زق البراند أفقي (X):", -300, 300, value=0, key="boffx")
+    brand_offset_y = st.slider("زق البراند رأسي (Y):", -300, 300, value=0, key="boffy")
+    brand_text_scale = st.slider("حجم خط البراند:", 0.015, 0.080, value=0.035)
+    brand_color = st.color_picker("لون خط البراند:", value="#FFD700")
 
     st.write("---")
     st.markdown("### ✍️ 3. الجملة الإضافية المخصصة")
     extra_brand_suffix = st.text_input("الجملة الإضافية:", value="", placeholder="مثال: Premium Quality")
-    extra_position_choice = st.selectbox("مكان الجملة الإضافية:", ["تحت يمين (Bottom-Right)", "تحت شمال (Bottom-Left)", "فوق يمين (Top-Right)", "فوق شمال (Top-Left)", "في المنتصف تماماً (Center)"], key="e_pos")
-    extra_offset_x = st.slider("زق الجملة أفقي (X):", -300, 300, key="e_ox")
-    extra_offset_y = st.slider("زق الجملة رأسي (Y):", -300, 300, key="e_oy")
-    extra_text_scale = st.slider("حجم خط الجملة:", 0.010, 0.060, key="e_sc")
-    extra_color = st.color_picker("لون خط الجملة:", key="e_cl")
+    extra_position_choice = st.selectbox("مكان الجملة الإضافية:", ["تحت يمين (Bottom-Right)", "تحت شمال (Bottom-Left)", "فوق يمين (Top-Right)", "فوق شمال (Top-Left)", "في المنتصف تماماً (Center)"], index=0)
+    extra_offset_x = st.slider("زق الجملة أفقي (X):", -300, 300, value=0, key="eoffx")
+    extra_offset_y = st.slider("زق الجملة رأسي (Y):", -300, 300, value=0, key="eoffy")
+    extra_text_scale = st.slider("حجم خط الجملة:", 0.010, 0.060, value=0.025)
+    extra_color = st.color_picker("لون خط الجملة:", value="#FFFFFF")
 
     st.write("---")
     st.markdown("### ⏱️ 4. التسريع والمدة الزمانية الذكية")
@@ -537,24 +524,24 @@ with st.sidebar:
 
     st.write("---")
     st.markdown("### 🖼️ 5. فلاتر الصور، الجودة والقص")
-    blur_bg_opt = st.checkbox("تفعيل خلفية Blur من نفس الصورة", key="blur_bg")
-    blur_intensity_val = st.slider("قوة تغبيش الخلفية (Blur Radius):", 1, 30, key="blur_val")
-    enhance_quality_opt = st.checkbox("تفعيل فلتر الجودة والحدة 🚀", key="enhance_opt")
-    sharpness_slider_val = st.slider("مستوى حدة التفاصيل (Sharpness):", 0.0, 5.0, key="sharp_val")
-    quality_slider_val = st.slider("نسبة جودة الضغط (Quality %):", 10, 100, key="quality_val")
-    protect_watermark = st.checkbox("إضافة علامة مائية شبكية لحماية الصور", key="enable_watermark_pattern")
+    
+    blur_bg_opt = st.checkbox("تفعيل خلفية Blur من نفس الصورة", value=True)
+    blur_intensity_val = st.slider("قوة تغبيش الخلفية (Blur Radius):", 1, 30, value=15)
+    enhance_quality_opt = st.checkbox("تفعيل فلتر الجودة والحدة 🚀", value=True)
+    sharpness_slider_val = st.slider("مستوى حدة التفاصيل (Sharpness):", 0.0, 5.0, value=2.0)
+    quality_slider_val = st.slider("نسبة جودة الضغط (Quality %):", 10, 100, value=95)
+    protect_watermark = st.checkbox("إضافة علامة مائية شبكية لحماية الصور", value=False)
     
     st.markdown("#### ✂️ أداة قص الصور (Crop)")
-    enable_crop_opt = st.checkbox("تفعيل قص أطراف الصور (Crop)", key="enable_crop")
+    enable_crop_opt = st.checkbox("تفعيل قص أطراف الصور (Crop)", value=False)
     if enable_crop_opt:
-        crop_l = st.slider("قص من اليسار (Left px):", 0, 500, key="crop_left")
-        crop_t = st.slider("قص من الأعلى (Top px):", 0, 500, key="crop_top")
-        crop_r = st.slider("قص من اليمين (Right px):", 0, 500, key="crop_right")
-        crop_b = st.slider("قص من الأسفل (Bottom px):", 0, 500, key="crop_bottom")
+        crop_l = st.slider("قص من اليسار (Left px):", 0, 500, value=0)
+        crop_t = st.slider("قص من الأعلى (Top px):", 0, 500, value=0)
+        crop_r = st.slider("قص من اليمين (Right px):", 0, 500, value=0)
+        crop_b = st.slider("قص من الأسفل (Bottom px):", 0, 500, value=0)
     else:
         crop_l = crop_t = crop_r = crop_b = 0
 
-    # معالجة آمنة لعرض واستبدال اللوجو
     if ensure_valid_image(config.ACTIVE_LOGO_PATH):
         try:
             st.image(config.ACTIVE_LOGO_PATH, caption="اللوجو النشط", width=100)
@@ -604,13 +591,13 @@ with tab1:
     ready_to_process = False
 
     st.markdown("#### ✂️ 1. أداة قص وتقطيع جزء معين من الفيديو (Trimmer)")
-    enable_trim = st.checkbox("تفعيل قص جزء محدد من الفيديو", key="enable_trim_key")
+    enable_trim = st.checkbox("تفعيل قص جزء محدد من الفيديو", value=False, key="trim_box_main")
     c_t1, c_t2 = st.columns(2)
     with c_t1: trim_start = st.number_input("بداية القص (بالثواني):", min_value=0, value=0)
     with c_t2: trim_end = st.number_input("نهاية القص (بالثواني - 0 للكل):", min_value=0, value=0)
 
     st.markdown("#### ⚡ 2. ضبط السرعة والمدّة المستهدفة للفيديو")
-    speed_mode = st.radio("طريقة معالجة مدة الفيديو:", ["تسريع / تبطيء يدوي", "مُطابقة تلقائية مع مدة مستهدفة (Smart Speed-up)"])
+    speed_mode = st.radio("طريقة معالجة مدة الفيديو:", ["تسريع / تبطيء يدوي", "مُطابقة تلقائية مع مدة مستهدفة (Smart Speed-up)"], key="speed_mode_radio")
     if speed_mode == "تسريع / تبطيء يدوي":
         manual_speed_factor = st.slider("مُعامل السرعة (1.0 عادي | 2.0 أسرع مرتين):", 0.5, 4.0, 1.0)
     else:
@@ -693,7 +680,7 @@ with tab2:
     
     uploaded_images = st.file_uploader("ارفع الصور هنا (يمكنك تحديد صورة أو أكثر):", type=["jpg", "jpeg", "png"], accept_multiple_files=True, key="multi_img_uploader")
     
-    show_orig_toggle = st.checkbox("👁️ عرض الصور الأصلية (قبل التعديل للمعاينة)", key="show_orig_key")
+    show_orig_toggle = st.checkbox("👁️ عرض الصور الأصلية (قبل التعديل للمعاينة)", value=False)
 
     if uploaded_images:
         if len(uploaded_images) > 1:
@@ -778,7 +765,7 @@ with tab2:
 
 # ==================== التبويب الثالث (الرادار والوصف والتسعير) ====================
 with tab3:
-    st.subheader("🛰️ مركز الفحص والـ Forward وإعادة التسعير التلقائي")
+    st.subheader("🛰️ مركز الفحص والـ Forward وإعادة التسعير التلقائي ونشر تليجرام")
     col1, col2 = st.columns(2)
     with col1: price_inc_rate = st.number_input("نسبة زيادة السعر (%):", min_value=0, max_value=100, value=config.DEFAULT_PRICE_INC_RATE)
     with col2: box_items_count = st.number_input("عدد القطع بالعلبة:", min_value=1, max_value=100, value=config.DEFAULT_BOX_ITEMS_COUNT)
@@ -920,7 +907,25 @@ with tab3:
                 f"🔗 للتواصل وطلب المنتج كاش فوراً: {fb_profile_link}\n\n"
                 f"{auto_hashtags}"
             )
-            st.text_area(f"📋 البوست الجاهز {idx + 1}:", value=final_commercial_post, height=200, key=f"post_area_{idx}")
+            
+            # خانة نص قابلة للتعديل بحرية قبل النشر
+            edited_post_content = st.text_area(f"📋 البوست الجاهز والمقابل للتعديل {idx + 1}:", value=final_commercial_post, height=200, key=f"post_area_{idx}")
+            
+            # --- زرار النشر المباشر الجديد بتكة زرار ---
+            pub_col1, pub_col2 = st.columns([2, 1])
+            with pub_col1:
+                target_pub_channel = st.text_input(f"يوزر القناة للنشر (منتج {idx+1}):", value=current_channels[0] if current_channels else "montgk", key=f"pub_ch_{idx}")
+            with pub_col2:
+                st.write("") # مسافة لتوسيط الزرار
+                st.write("")
+                if st.button(f"🚀 نشر الآن #{idx+1}", key=f"send_tg_btn_{idx}"):
+                    img_to_send = item["image"] if isinstance(item["image"], str) else None
+                    success, msg = send_telegram_post(config.TELEGRAM_BOT_TOKEN, target_pub_channel, edited_post_content, img_to_send)
+                    if success:
+                        st.success(msg)
+                    else:
+                        st.error(msg)
+                        
             st.markdown("---")
 
 # ==================== التبويب الرابع (🔥 رادار الترندات واسطمبات البوستات) ====================
