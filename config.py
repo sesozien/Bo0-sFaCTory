@@ -1,7 +1,7 @@
 import os
 import json
 
-PAGE_TITLE = "Bo0'sViDClone V12.0 Ultra Smart"
+PAGE_TITLE = "Bo0'sViDClone V13.0 Ultimate"
 PAGE_ICON = "🛰️"
 BRAND_NAME_AR = "مصنع تجميل وإدارة المحتوى الذكي"
 DEVELOPER_SIGNATURE = "Developed with ⚡ by Mr:- Bo0"
