@@ -1,7 +1,7 @@
 import os
 import json
 
-PAGE_TITLE = "Bo0'sViDClone V11.0"
+PAGE_TITLE = "Bo0'sViDClone V12.0 Ultra Smart"
 PAGE_ICON = "🛰️"
 BRAND_NAME_AR = "مصنع تجميل وإدارة المحتوى الذكي"
 DEVELOPER_SIGNATURE = "Developed with ⚡ by Mr:- Bo0"
@@ -21,7 +21,7 @@ DEFAULT_PRICE_INC_RATE = 20
 DEFAULT_BOX_ITEMS_COUNT = 12
 
 def get_price_keywords():
-    default_keywords = ["سعر", "السعر", "جنية", "جنيه", "جـ", "egp", "EGP", "LE", "للباكت", "للدرزن", "بـ"]
+    default_keywords = ["سعر", "السعر", "جنية", "جنيه", "جـ", "egp", "EGP", "LE", "للباكت", "للدرزن", "بـ", "للقطعة"]
     if os.path.exists(KEYWORDS_FILE):
         try:
             with open(KEYWORDS_FILE, "r", encoding="utf-8") as f:
