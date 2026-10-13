@@ -98,7 +98,7 @@ def render_tab_video(chosen_size, logo_position_choice, logo_offset_x, logo_offs
                 st.video(output_path)
             except Exception as e: st.error(f"خطأ: {str(e)}")
 
-def render_tab_images(blur_bg_opt, blur_intensity_val, logo_opacity, fit_auto_logo, logo_custom_w, logo_custom_h, brand_text_scale, brand_color, brand_position_choice, brand_offset_x, brand_offset_y, extra_brand_suffix, extra_text_scale, extra_color, extra_position_choice, extra_offset_x, extra_offset_y, chosen_size, enhance_quality_opt, sharpness_slider_val, quality_slider_val, logo_position_choice, logo_offset_x, logo_offset_y, color_preset, enable_crop_opt, crop_l, crop_t, crop_r, crop_b, total_target_video_duration, image_duration_per_slide, audio_mode, uploaded_custom_audio):
+def render_tab_images(blur_bg_opt, blur_intensity_val, logo_opacity, fit_auto_logo, logo_custom_w, logo_custom_h, brand_text_scale, brand_color, brand_position_choice, brand_offset_x, brand_offset_y, extra_brand_suffix, extra_text_scale, extra_color, extra_position_choice, extra_offset_x, extra_offset_y, chosen_size, enhance_quality_opt, sharpness_slider_val, quality_slider_val, logo_position_choice, logo_offset_x, logo_offset_y, color_preset, enable_crop_opt, crop_l, crop_t, crop_r, crop_b, total_target_video_duration, image_duration_per_slide, audio_mode, uploaded_custom_audio, font_choice):
     st.subheader("🖼️ مصنع تجميل صور المنتجات وفيديوهات السلايد شو الذكية")
     uploaded_images = st.file_uploader("ارفع الصور:", type=["jpg", "jpeg", "png"], accept_multiple_files=True, key="img_up_tab2")
     show_orig_toggle = st.checkbox("👁️ عرض الصور الأصلية", key="show_orig_tab2")
@@ -125,7 +125,8 @@ def render_tab_images(blur_bg_opt, blur_intensity_val, logo_opacity, fit_auto_lo
                         extra_off_x=extra_offset_x, extra_off_y=extra_offset_y, target_size=chosen_size,
                         enhance_quality=enhance_quality_opt, sharpness_val=sharpness_slider_val, quality_val=quality_slider_val,
                         logo_pos_mode=logo_position_choice, logo_off_x=logo_offset_x, logo_off_y=logo_offset_y,
-                        color_preset=color_preset, enable_crop=enable_crop_opt, c_left=crop_l, c_top=crop_t, c_right=crop_r, c_bottom=crop_b
+                        color_preset=color_preset, enable_crop=enable_crop_opt, c_left=crop_l, c_top=crop_t, c_right=crop_r, c_bottom=crop_b,
+                        font_choice=font_choice
                     )
                     saved_paths.append(processed_p)
                     if os.path.exists(temp_p): os.remove(temp_p)
@@ -146,7 +147,7 @@ def render_tab_images(blur_bg_opt, blur_intensity_val, logo_opacity, fit_auto_lo
                         st.video(v_slide_path)
 
 def render_tab_radar(current_channels):
-    st.subheader("🛰️ مركز الفحص والـ Forward وإعادة التسعير التلقائي ونشر تليجرام")
+    st.subheader("🛰️ مركز الفحص والـ Forward وإعادة التسعير الذكي ونشر تليجرام")
     col1, col2 = st.columns(2)
     with col1: price_inc_rate = st.number_input("نسبة زيادة السعر (%):", min_value=0, max_value=100, value=config.DEFAULT_PRICE_INC_RATE, key="p_rate")
     with col2: box_items_count = st.number_input("عدد القطع بالعلبة:", min_value=1, max_value=100, value=config.DEFAULT_BOX_ITEMS_COUNT, key="b_items")
@@ -160,7 +161,7 @@ def render_tab_radar(current_channels):
     if radar_mode == "🛰️ سحب رادار حي وفوري":
         target_ch = st.selectbox("اختر القناة:", current_channels, key="sel_ch")
         if st.button("🛰️ قنص المحتوى", key="btn_fetch"):
-            with st.spinner("جاري السحب..."):
+            with st.spinner("جاري السحب والتحليل الذكي..."):
                 try:
                     res = requests.get(f"https://t.me/s/{target_ch}", headers={"User-Agent": "Mozilla/5.0"}, timeout=12)
                     if res.status_code == 200:
@@ -179,12 +180,12 @@ def render_tab_radar(current_channels):
                                 auto_price, old_str = utils.extract_original_price_only(p_text, max_limit=max_price)
                                 temp_collected.append({"text": p_text, "image": photo_url, "auto_price": auto_price, "old_str": old_str})
                         st.session_state["cached_posts"] = temp_collected
-                        st.success(f"🎯 تم قنص {len(temp_collected)} بوست!")
+                        st.success(f"🎯 تم قنص وتحليل {len(temp_collected)} بوست بذكاء!")
                 except Exception as e: st.error(f"خطأ: {str(e)}")
     else:
         fwd_text = st.text_area("نص البوست:", key="fwd_t")
         fwd_img = st.file_uploader("الصورة:", key="fwd_img")
-        if st.button("⚡ تعديل فوراً", key="btn_man"):
+        if st.button("⚡ تحليل وتعديل فوراً", key="btn_man"):
             if fwd_text:
                 auto_price, old_str = utils.extract_original_price_only(fwd_text, max_limit=max_price)
                 st.session_state["cached_posts"] = [{"text": fwd_text, "image": fwd_img, "auto_price": auto_price, "old_str": old_str}]
@@ -193,14 +194,29 @@ def render_tab_radar(current_channels):
         for idx, item in enumerate(st.session_state["cached_posts"]):
             st.markdown(f"#### 📦 منتج رقم {idx + 1}")
             if item["image"]: st.image(item["image"], width=250)
-            orig_p = st.number_input(f"السعر الأصلي {idx+1}:", min_value=0, value=int(item["auto_price"]), key=f"orig_p_{idx}")
+            orig_p = st.number_input(f"السعر الأصلي المكتشف {idx+1}:", min_value=0, value=int(item["auto_price"]), key=f"orig_p_{idx}")
             new_p = int(orig_p * (1 + (price_inc_rate / 100)))
             
-            clean_t = re.sub(r'#\w+|http[s]?://\S+', '', item["text"])
-            final_desc = clean_t.replace(item["old_str"], str(new_p), 1) if item["old_str"] and item["old_str"] in clean_t else clean_t + f"\nالسعر: {new_p} ج"
+            # --- حاسبة الأرباح الذكية الفورية ---
+            profit_margin = new_p - orig_p
+            st.success(f"💵 **حاسبة الأرباح الذكية:** المكسب المتوقع في القطعة الواحدة = **{profit_margin} جنيه** (بنسبة زيادة {price_inc_rate}%)")
             
-            final_post = f"{final_desc}\n\n📌 سعر العرض: {new_p} ج\n🔗 للتواصل: {fb_link}"
-            post_content = st.text_area(f"البوست {idx+1}:", value=final_post, height=150, key=f"post_txt_{idx}")
+            smart_desc = utils.generate_smart_ai_description(item["text"])
+            auto_tags = utils.generate_auto_hashtags(item["text"][:15])
+            
+            st.info("💡 **الوصف الذكي المقترح بواسطة النظام:**")
+            st.caption(smart_desc)
+            
+            apply_smart = st.checkbox(f"🔄 اعتماد الوصف الذكي لمنتج {idx+1}؟", value=False, key=f"ai_chk_{idx}")
+            
+            if apply_smart:
+                final_post = f"{smart_desc}\n\n📌 سعر العرض الجديد: {new_p} ج\n🔗 للتواصل: {fb_link}\n\n{auto_tags}"
+            else:
+                clean_t = re.sub(r'#\w+|http[s]?://\S+', '', item["text"])
+                final_desc = clean_t.replace(item["old_str"], str(new_p), 1) if item["old_str"] and item["old_str"] in clean_t else clean_t + f"\nالسعر: {new_p} ج"
+                final_post = f"{final_desc}\n\n📌 سعر العرض الجديد: {new_p} ج\n🔗 للتواصل: {fb_link}"
+            
+            post_content = st.text_area(f"البوست النهائي {idx+1}:", value=final_post, height=150, key=f"post_txt_{idx}")
             
             pub_col1, pub_col2 = st.columns([2, 1])
             with pub_col1: pub_ch = st.text_input(f"قناة النشر #{idx+1}:", value=current_channels[0], key=f"p_ch_{idx}")
@@ -228,5 +244,5 @@ def render_tab_trends():
         st.info(" ".join(data["hashtags"]))
     with c2:
         user_body = st.text_area("تفاصيل العرض:", value="خصم حصري لفترة محدودة والتوصيل لأي مكان.", height=120, key="u_body")
-        if st.button("🚀 توليد اسطمبة البوست", key="btn_tpl"):
+        if st.button("🚀 توليد اسطمبة البوست الذكية", key="btn_tpl"):
             st.code(f"🔥 عرض خاص على {sel_prod}!\n\n{user_body}\n\n{' '.join(data['hashtags'])}", language="markdown")
