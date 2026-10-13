@@ -39,11 +39,9 @@ def get_selected_font(font_choice, font_size=24):
         "Roboto (إنجليزي مودرن وسريع)": "https://github.com/google/fonts/raw/main/ofl/roboto/Roboto-Bold.ttf",
         "Montserrat (إنجليزي عريض وبارز)": "https://github.com/google/fonts/raw/main/ofl/montserrat/Montserrat-Bold.ttf"
     }
-    
     target_url = font_urls.get(font_choice, font_urls["Cairo (عربي عريض فاخر)"])
     font_dir = os.path.join(os.path.expanduser("~"), ".fonts")
     os.makedirs(font_dir, exist_ok=True)
-    
     font_filename = font_choice.split()[0] + "-Bold.ttf"
     font_path = os.path.join(font_dir, font_filename)
     
@@ -53,7 +51,6 @@ def get_selected_font(font_choice, font_size=24):
             with open(font_path, "wb") as f: f.write(r.content)
         except:
             pass
-            
     try:
         return ImageFont.truetype(font_path, font_size)
     except:
@@ -130,7 +127,7 @@ def process_image_template(image_path, blur_background=True, blur_intensity=12, 
                            extra_text="", extra_text_scale=0.025, extra_color="#FFFFFF", extra_pos="تحت يمين (Bottom-Right)", extra_off_x=0, extra_off_y=0,
                            target_size=None, enhance_quality=True, sharpness_val=2.0, quality_val=95, logo_pos_mode="فوق يمين (Top-Right)", logo_off_x=0, logo_off_y=0,
                            enable_watermark_pattern=False, color_preset="طبيعي (بدون فلتر)",
-                           enable_crop=False, c_left=0, c_top=0, c_right=0, c_bottom=0, font_choice="Cairo (عربي عريض فاخر)"):
+                           enable_crop=False, c_left=0, c_top=0, c_right=0, c_bottom=0, font_choice="Cairo (عربي عريض فاخر)", remove_logo_bg=True):
     
     img = Image.open(image_path).convert("RGBA")
     
@@ -191,9 +188,10 @@ def process_image_template(image_path, blur_background=True, blur_intensity=12, 
             else:
                 logo = logo.resize((max(10, logo_custom_w), max(10, logo_custom_h)), Image.Resampling.LANCZOS)
                 
-            np_logo = np.array(logo)
-            new_a = np.where((np_logo[:, :, 0] > 235) & (np_logo[:, :, 1] > 235) & (np_logo[:, :, 2] > 235), 0, np_logo[:, :, 3])
-            logo.putalpha(Image.fromarray(new_a.astype('uint8')))
+            if remove_logo_bg:
+                np_logo = np.array(logo)
+                new_a = np.where((np_logo[:, :, 0] > 235) & (np_logo[:, :, 1] > 235) & (np_logo[:, :, 2] > 235), 0, np_logo[:, :, 3])
+                logo.putalpha(Image.fromarray(new_a.astype('uint8')))
 
             r, g, b, a = logo.split()
             a = a.point(lambda p: int(p * opacity_val))
