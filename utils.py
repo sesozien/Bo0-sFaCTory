@@ -1,11 +1,11 @@
 import os
 import re
 import requests
+import numpy as np
 from PIL import Image, ImageFilter, ImageDraw, ImageFont, ImageEnhance, ImageOps
 import arabic_reshaper
 from bidi.algorithm import get_display
 import config
-import numpy as np
 
 def ensure_valid_image(image_path):
     if not os.path.exists(image_path):
@@ -31,28 +31,33 @@ def apply_color_preset(pil_img, preset_name):
         pil_img = ImageOps.grayscale(pil_img).convert("RGBA")
     return pil_img
 
-def get_arabic_font(font_size=24):
-    for folder_name in ["Cairo", "cairo"]:
-        if os.path.exists(folder_name) and os.path.isdir(folder_name):
-            files = [f for f in os.listdir(folder_name) if f.lower().endswith('.ttf')]
-            if files:
-                font_path = os.path.join(folder_name, files[0])
-                try: return ImageFont.truetype(font_path, font_size)
-                except: pass
-                
+def get_selected_font(font_choice, font_size=24):
+    font_urls = {
+        "Cairo (عربي عريض فاخر)": "https://github.com/google/fonts/raw/main/ofl/cairo/Cairo-Bold.ttf",
+        "Tajawal (عربي أنيق وانسيابي)": "https://github.com/google/fonts/raw/main/ofl/tajawal/Tajawal-Bold.ttf",
+        "Amiri (عربي كلاسيكي أصيل)": "https://github.com/google/fonts/raw/main/ofl/amiri/Amiri-Bold.ttf",
+        "Roboto (إنجليزي مودرن وسريع)": "https://github.com/google/fonts/raw/main/ofl/roboto/Roboto-Bold.ttf",
+        "Montserrat (إنجليزي عريض وبارز)": "https://github.com/google/fonts/raw/main/ofl/montserrat/Montserrat-Bold.ttf"
+    }
+    
+    target_url = font_urls.get(font_choice, font_urls["Cairo (عربي عريض فاخر)"])
     font_dir = os.path.join(os.path.expanduser("~"), ".fonts")
     os.makedirs(font_dir, exist_ok=True)
-    font_path = os.path.join(font_dir, "Cairo-Bold.ttf")
+    
+    font_filename = font_choice.split()[0] + "-Bold.ttf"
+    font_path = os.path.join(font_dir, font_filename)
     
     if not os.path.exists(font_path):
         try:
-            url = "https://github.com/google/fonts/raw/main/ofl/cairo/Cairo-Bold.ttf"
-            r = requests.get(url, timeout=15)
+            r = requests.get(target_url, timeout=15)
             with open(font_path, "wb") as f: f.write(r.content)
-        except: return None
+        except:
+            pass
             
-    try: return ImageFont.truetype(font_path, font_size)
-    except: return None
+    try:
+        return ImageFont.truetype(font_path, font_size)
+    except:
+        return ImageFont.load_default()
 
 def hex_to_rgb(hex_str):
     hex_str = hex_str.lstrip('#')
@@ -125,7 +130,7 @@ def process_image_template(image_path, blur_background=True, blur_intensity=12, 
                            extra_text="", extra_text_scale=0.025, extra_color="#FFFFFF", extra_pos="تحت يمين (Bottom-Right)", extra_off_x=0, extra_off_y=0,
                            target_size=None, enhance_quality=True, sharpness_val=2.0, quality_val=95, logo_pos_mode="فوق يمين (Top-Right)", logo_off_x=0, logo_off_y=0,
                            enable_watermark_pattern=False, color_preset="طبيعي (بدون فلتر)",
-                           enable_crop=False, c_left=0, c_top=0, c_right=0, c_bottom=0):
+                           enable_crop=False, c_left=0, c_top=0, c_right=0, c_bottom=0, font_choice="Cairo (عربي عريض فاخر)"):
     
     img = Image.open(image_path).convert("RGBA")
     
@@ -168,7 +173,7 @@ def process_image_template(image_path, blur_background=True, blur_intensity=12, 
             
             fg = img.copy()
             fg.thumbnail((int(w * 0.9), int(h * 0.9)), Image.Resampling.LANCZOS)
-            offset = ((w - fg.size[0]) // 2, (h - fg.size[1]) // 2)
+            offset = ((w - fg.size[0]) // 2, (th - fg.size[1]) // 2)
             bg.paste(fg, offset, fg)
             img = bg
         else:
@@ -186,6 +191,10 @@ def process_image_template(image_path, blur_background=True, blur_intensity=12, 
             else:
                 logo = logo.resize((max(10, logo_custom_w), max(10, logo_custom_h)), Image.Resampling.LANCZOS)
                 
+            np_logo = np.array(logo)
+            new_a = np.where((np_logo[:, :, 0] > 235) & (np_logo[:, :, 1] > 235) & (np_logo[:, :, 2] > 235), 0, np_logo[:, :, 3])
+            logo.putalpha(Image.fromarray(new_a.astype('uint8')))
+
             r, g, b, a = logo.split()
             a = a.point(lambda p: int(p * opacity_val))
             logo_transparent = Image.merge("RGBA", (r, g, b, a))
@@ -197,13 +206,13 @@ def process_image_template(image_path, blur_background=True, blur_intensity=12, 
 
     base_brand_text = os.getenv("dynamic_brand_text", "Montgk Brand")
     calc_b_size = max(14, int(h * brand_text_scale))
-    b_font = get_arabic_font(calc_b_size)
+    b_font = get_selected_font(font_choice, calc_b_size)
     if b_font:
         draw_single_custom_text(img, base_brand_text, b_font, hex_to_rgb(brand_color) + (255,), brand_pos, brand_off_x, brand_off_y)
 
     if extra_text.strip():
         calc_e_size = max(12, int(h * extra_text_scale))
-        e_font = get_arabic_font(calc_e_size)
+        e_font = get_selected_font(font_choice, calc_e_size)
         if e_font:
             draw_single_custom_text(img, extra_text, e_font, hex_to_rgb(extra_color) + (255,), extra_pos, extra_off_x, extra_off_y)
 
@@ -258,6 +267,24 @@ def extract_original_price_only(text, max_limit=None):
         if max_limit and val > max_limit: continue
         if val < 50000: return val, num_str
     return 0, ""
+
+def generate_smart_ai_description(raw_text):
+    clean = re.sub(r'http[s]?://\S+|www\.\S+', '', raw_text)
+    clean = re.sub(r'#\w+', '', clean)
+    clean = re.sub(r'01[0125]\d{8}', '', clean)
+    words = [w for w in clean.split() if not w.isdigit()]
+    base_description = " ".join(words[:20])
+    return (
+        f"🚨 **فرصة ذهبية لا تعوض - الكمية محدودة جداً!** 🚨\n"
+        f"🔥 {base_description} 🔥\n"
+        f"جودة عالية، تشطيب راقي، وتصميم يناسب كل احتياجاتك. جبناهالك بأقل سعر في السوق عشان تكسح منافسيك! 😉👑"
+    )
+
+def generate_auto_hashtags(product_name):
+    clean_name = re.sub(r'[^\w\s]', '', product_name).strip().replace(" ", "_")
+    base_tags = ["#عروض_مصر", "#تسوق_اونلاين", "#تخفيضات", "#منتجات_تريند", "#توصيل_سريع"]
+    if clean_name: base_tags.insert(0, f"#{clean_name}")
+    return " ".join(base_tags)
 
 def send_telegram_post(bot_token, channel_username, text_message, image_url=None):
     if not bot_token or bot_token == "ضع_التوكن_الافتراضي_هنا":
