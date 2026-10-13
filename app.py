@@ -36,34 +36,17 @@ st.set_page_config(page_title=config.PAGE_TITLE, page_icon=config.PAGE_ICON, lay
 
 current_channels = config.load_and_sync_channels()
 
-def ensure_valid_image(image_path):
-    if not os.path.exists(image_path):
-        return False
-    try:
-        with Image.open(image_path) as img:
-            img.verify()
-        return True
-    except Exception:
-        return False
-
-if not ensure_valid_image(config.DEFAULT_LOGO_PATH):
+if not os.path.exists(config.DEFAULT_LOGO_PATH):
     Image.new('RGBA', (200, 200), color=(255, 75, 75, 255)).save(config.DEFAULT_LOGO_PATH)
-
-if not ensure_valid_image(config.ACTIVE_LOGO_PATH):
+if not os.path.exists(config.ACTIVE_LOGO_PATH):
     Image.open(config.DEFAULT_LOGO_PATH).save(config.ACTIVE_LOGO_PATH)
 
-# --- نظام حفظ واسترجاع الإعدادات الافتراضية وحالة الـ Checkboxes ---
+# --- نظام حفظ واسترجاع الإعدادات الافتراضية الشامل ---
 DEFAULT_SETTINGS = {
-    "logo_fit_auto": False,
-    "blur_bg": True,
-    "enhance_opt": True,
-    "enable_watermark_pattern": False,
-    "enable_crop": False,
-    "enable_trim_key": False,
-    "show_orig_key": False,
     "l_pos": "فوق يمين (Top-Right)",
     "l_ox": 0, "l_oy": 0,
     "logo_opacity": 0.8,
+    "logo_fit_auto": False,
     "logo_custom_w": 200, 
     "logo_custom_h": 200,
     "b_pos": "تحت شمال (Bottom-Left)",
@@ -72,11 +55,20 @@ DEFAULT_SETTINGS = {
     "e_pos": "تحت يمين (Bottom-Right)",
     "e_ox": 0, "e_oy": 0,
     "e_sc": 0.025, "e_cl": "#FFFFFF",
+    "slide_dur": 3,
+    "blur_bg": True,
     "blur_val": 15,
+    "enhance_opt": True,
     "sharp_val": 2.0,
     "quality_val": 95,
     "color_preset": "طبيعي (بدون فلتر)",
-    "dynamic_brand_text": "Montgk Brand"
+    "dynamic_brand_text": "Montgk Brand",
+    "enable_watermark_pattern": False,
+    "enable_crop": False,
+    "crop_left": 0,
+    "crop_top": 0,
+    "crop_right": 0,
+    "crop_bottom": 0
 }
 
 for k, v in DEFAULT_SETTINGS.items():
@@ -304,29 +296,27 @@ def process_image_template(image_path, blur_background=True, blur_intensity=12, 
             
             fg = img.copy()
             fg.thumbnail((int(w * 0.9), int(h * 0.9)), Image.Resampling.LANCZOS)
-            offset = ((w - fg.size[0]) // 2, (th - fg.size[1]) // 2)
+            offset = ((w - fg.size[0]) // 2, (h - fg.size[1]) // 2)
             bg.paste(fg, offset, fg)
             img = bg
 
     w, h = img.size
 
-    if ensure_valid_image(config.ACTIVE_LOGO_PATH):
-        try:
-            logo = Image.open(config.ACTIVE_LOGO_PATH).convert("RGBA")
+    if os.path.exists(config.ACTIVE_LOGO_PATH):
+        logo = Image.open(config.ACTIVE_LOGO_PATH).convert("RGBA")
+        
+        # تغيير حجم اللوجو بناءً على العرض والارتفاع المحددين
+        if fit_auto_logo:
+            logo.thumbnail((int(w * (logo_custom_w / 1000.0)), int(h * (logo_custom_h / 1000.0))), Image.Resampling.LANCZOS)
+        else:
+            logo = logo.resize((max(10, logo_custom_w), max(10, logo_custom_h)), Image.Resampling.LANCZOS)
             
-            if fit_auto_logo:
-                logo.thumbnail((int(w * (logo_custom_w / 1000.0)), int(h * (logo_custom_h / 1000.0))), Image.Resampling.LANCZOS)
-            else:
-                logo = logo.resize((max(10, logo_custom_w), max(10, logo_custom_h)), Image.Resampling.LANCZOS)
-                
-            r, g, b, a = logo.split()
-            a = a.point(lambda p: int(p * opacity_val))
-            logo_transparent = Image.merge("RGBA", (r, g, b, a))
-            
-            lx, ly = calculate_element_position(w, h, logo.size[0], logo.size[1], logo_pos_mode, logo_off_x, logo_off_y)
-            img.paste(logo_transparent, (lx, ly), logo_transparent)
-        except Exception:
-            pass
+        r, g, b, a = logo.split()
+        a = a.point(lambda p: int(p * opacity_val))
+        logo_transparent = Image.merge("RGBA", (r, g, b, a))
+        
+        lx, ly = calculate_element_position(w, h, logo.size[0], logo.size[1], logo_pos_mode, logo_off_x, logo_off_y)
+        img.paste(logo_transparent, (lx, ly), logo_transparent)
 
     base_brand_text = st.session_state.get("dynamic_brand_text", "Montgk Brand")
     calc_b_size = max(14, int(h * brand_text_scale))
@@ -442,7 +432,7 @@ def generate_post_template(body_text, category, selected_product):
 ⚡ **ليه تشتري من {brand_name}؟**
 ✅ جودة ممتازة مضمونة 100%
 ✅ توصيل سريع لجميع محافظات مصر 🇪🇬
-✅ معاينة المنتج قبل الاستلام والدفع عند الاستلام
+✅ معاينة المنتج قبل الاستلام والادفع عند الاستلام
 
 📲 **للطلب أو الاستفسار:** ارسل لنا رسالة الآن على الخاص أو عبر الواتساب!
 
@@ -450,30 +440,6 @@ def generate_post_template(body_text, category, selected_product):
 {hashtags_str}
 """
     return template
-
-def send_telegram_post(bot_token, channel_username, text_message, image_url=None):
-    if not bot_token or bot_token == "ضع_التوكن_الافتراضي_هنا":
-        return False, "❌ توكن بوت تليجرام غير مسجل في الإعدادات أو ملف البيئة!"
-    
-    channel_target = channel_username if channel_username.startswith("@") else f"@{channel_username}"
-    
-    try:
-        if image_url and image_url.startswith("http"):
-            url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
-            payload = {"chat_id": channel_target, "photo": image_url, "caption": text_message, "parse_mode": "Markdown"}
-            r = requests.post(url, data=payload, timeout=15)
-        else:
-            url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-            payload = {"chat_id": channel_target, "text": text_message, "parse_mode": "Markdown"}
-            r = requests.post(url, data=payload, timeout=15)
-            
-        res_json = r.json()
-        if res_json.get("ok"):
-            return True, "✅ تم نشر البوست بنجاح على القناة!"
-        else:
-            return False, f"❌ خطأ من تليجرام: {res_json.get('description', 'غير معروف')}"
-    except Exception as e:
-        return False, f"❌ حدث خطأ في الاتصال: {str(e)}"
 
 # ==================== 🛠️ لوحة التحكم الجانبية ====================
 with st.sidebar:
@@ -500,8 +466,7 @@ with st.sidebar:
     st.markdown("### 📐 أبعاد وهندسة قوالب المنصات")
     platform_dimension = st.selectbox(
         "اختر مقاس منصة العرض المستهدفة:",
-        ["تلقائي (حجم الملف الأصلي)", "تيك توك / ريلز (9:16 - 1080x1920)", "يوتيوب عريض (16:9 - 1920x1080)", "فيسبوك وانستجرام مربع (1:1 - 1080x1080)"],
-        key="platform_dim_select"
+        ["تلقائي (حجم الملف الأصلي)", "تيك توك / ريلز (9:16 - 1080x1920)", "يوتيوب عريض (16:9 - 1920x1080)", "فيسبوك وانستجرام مربع (1:1 - 1080x1080)"]
     )
     dim_map = {
         "تلقائي (حجم الملف الأصلي)": None,
@@ -518,9 +483,9 @@ with st.sidebar:
     logo_offset_y = st.slider("زق اللوجو رأسي (Y):", -300, 300, key="l_oy")
     logo_opacity = st.slider("شفافية اللوجو:", 0.1, 1.0, key="logo_opacity")
     
-    # --- Checkbox مرتبط حصرياً بالـ session_state ---
     fit_auto_logo = st.checkbox("التكيف التلقائي مع أبعاد الصورة (Auto Fit)", key="logo_fit_auto")
     
+    # تحكم منفصل في العرض والارتفاع للوجو
     c_lw, c_lh = st.columns(2)
     with c_lw:
         logo_custom_w = st.slider("عرض اللوجو (px):", 10, 1000, key="logo_custom_w")
@@ -538,7 +503,7 @@ with st.sidebar:
 
     st.write("---")
     st.markdown("### ✍️ 3. الجملة الإضافية المخصصة")
-    extra_brand_suffix = st.text_input("الجملة الإضافية:", key="extra_suffix_text")
+    extra_brand_suffix = st.text_input("الجملة الإضافية:", value="", placeholder="مثال: Premium Quality")
     extra_position_choice = st.selectbox("مكان الجملة الإضافية:", ["تحت يمين (Bottom-Right)", "تحت شمال (Bottom-Left)", "فوق يمين (Top-Right)", "فوق شمال (Top-Left)", "في المنتصف تماماً (Center)"], key="e_pos")
     extra_offset_x = st.slider("زق الجملة أفقي (X):", -300, 300, key="e_ox")
     extra_offset_y = st.slider("زق الجملة رأسي (Y):", -300, 300, key="e_oy")
@@ -547,18 +512,16 @@ with st.sidebar:
 
     st.write("---")
     st.markdown("### ⏱️ 4. التسريع والمدة الزمانية الذكية")
-    time_control_mode = st.radio("طريقة تحديد وقت فيديو الصور:", ["مدة محددة لكل صورة", "وقت إجمالي مستهدف للفيديو كامل (السرعة التلقائية)"], key="time_mode_radio")
+    time_control_mode = st.radio("طريقة تحديد وقت فيديو الصور:", ["مدة محددة لكل صورة", "وقت إجمالي مستهدف للفيديو كامل (السرعة التلقائية)"])
     if time_control_mode == "مدة محددة لكل صورة":
-        image_duration_per_slide = st.slider("مدة عرض الصورة (بالثواني):", min_value=1, max_value=10, value=3, key="slide_dur_slider")
+        image_duration_per_slide = st.slider("مدة عرض الصورة (بالثواني):", min_value=1, max_value=10, value=3)
         total_target_video_duration = None
     else:
-        total_target_video_duration = st.slider("المدة الإجمالية المستهدفة للفيديو (بالثواني):", min_value=5, max_value=60, value=15, key="total_dur_slider")
+        total_target_video_duration = st.slider("المدة الإجمالية المستهدفة للفيديو (بالثواني):", min_value=5, max_value=60, value=15)
         image_duration_per_slide = 3
 
     st.write("---")
     st.markdown("### 🖼️ 5. فلاتر الصور، الجودة والقص")
-    
-    # --- Checkboxes مرطبة بالـ session_state لمنع التهنيج ---
     blur_bg_opt = st.checkbox("تفعيل خلفية Blur من نفس الصورة", key="blur_bg")
     blur_intensity_val = st.slider("قوة تغبيش الخلفية (Blur Radius):", 1, 30, key="blur_val")
     enhance_quality_opt = st.checkbox("تفعيل فلتر الجودة والحدة 🚀", key="enhance_opt")
@@ -569,38 +532,30 @@ with st.sidebar:
     st.markdown("#### ✂️ أداة قص الصور (Crop)")
     enable_crop_opt = st.checkbox("تفعيل قص أطراف الصور (Crop)", key="enable_crop")
     if enable_crop_opt:
-        crop_l = st.slider("قص من اليسار (Left px):", 0, 500, value=0, key="crop_l_slider")
-        crop_t = st.slider("قص من الأعلى (Top px):", 0, 500, value=0, key="crop_t_slider")
-        crop_r = st.slider("قص من اليمين (Right px):", 0, 500, value=0, key="crop_r_slider")
-        crop_b = st.slider("قص من الأسفل (Bottom px):", 0, 500, value=0, key="crop_b_slider")
+        crop_l = st.slider("قص من اليسار (Left px):", 0, 500, key="crop_left")
+        crop_t = st.slider("قص من الأعلى (Top px):", 0, 500, key="crop_top")
+        crop_r = st.slider("قص من اليمين (Right px):", 0, 500, key="crop_right")
+        crop_b = st.slider("قص من الأسفل (Bottom px):", 0, 500, key="crop_bottom")
     else:
         crop_l = crop_t = crop_r = crop_b = 0
 
-    if ensure_valid_image(config.ACTIVE_LOGO_PATH):
-        try:
-            st.image(config.ACTIVE_LOGO_PATH, caption="اللوجو النشط", width=100)
-        except Exception:
-            pass
-            
-    uploaded_logo = st.file_uploader("تغيير اللوجو:", type=["png", "jpg", "jpeg"], key="sidebar_logo_uploader")
+    if os.path.exists(config.ACTIVE_LOGO_PATH):
+        st.image(config.ACTIVE_LOGO_PATH, caption="اللوجو النشط", width=100)
+    uploaded_logo = st.file_uploader("تغيير اللوجو:", type=["png", "jpg", "jpeg"])
     if uploaded_logo is not None:
-        try:
-            img = Image.open(uploaded_logo)
-            img.save(config.ACTIVE_LOGO_PATH)
-            st.success("✅ تم التحديث!")
-            st.rerun()
-        except Exception as e:
-            st.error(f"ملف اللوجو المرفوع غير صالح: {str(e)}")
+        Image.open(uploaded_logo).save(config.ACTIVE_LOGO_PATH)
+        st.success("✅ تم التحديث!")
+        st.rerun()
 
     st.write("---")
-    audio_mode = st.radio("مصدر الصوت:", ["تراك المزيكا الحصري التلقائي", "رفع تراك أوديو MP3 مخصص من جهازك"], key="audio_mode_radio")
+    audio_mode = st.radio("مصدر الصوت:", ["تراك المزيكا الحصري التلقائي", "رفع تراك أوديو MP3 مخصص من جهازك"])
     uploaded_custom_audio = None
     if audio_mode == "رفع تراك أوديو MP3 مخصص من جهازك":
-        uploaded_custom_audio = st.file_uploader("ارفع الأوديو:", type=["mp3", "wav", "ogg"], key="custom_audio_uploader")
+        uploaded_custom_audio = st.file_uploader("ارفع الأوديو:", type=["mp3", "wav", "ogg"])
     
     st.write("---")
-    new_ch = st.text_input("إضافة قناة تليجرام:", key="new_ch_input")
-    if st.button("➕ حفظ القناة", key="save_ch_btn"):
+    new_ch = st.text_input("إضافة قناة تليجرام:")
+    if st.button("➕ حفظ القناة"):
         if new_ch and new_ch not in current_channels:
             current_channels.append(new_ch.replace("@", "").strip())
             with open(config.CHANNELS_FILE, "w", encoding="utf-8") as f:
@@ -619,28 +574,28 @@ tab1, tab2, tab3, tab4 = st.tabs([
 # ==================== التبويب الأول (الفيديو) ====================
 with tab1:
     st.subheader("🚀 منصة تسريع، تقطيع ومونتاج الفيديو الذكي")
-    option = st.radio("إدخال الفيديو:", ("لصق رابط فيديو (يوتيوب، فيسبوك، تيك توك)", "رفع ملف فيديو مباشر من جهازك"), key="vid_option_main")
+    option = st.radio("إدخال الفيديو:", ("لصق رابط فيديو (يوتيوب، فيسبوك، تيك توك)", "رفع ملف فيديو مباشر من جهازك"), key="vid_option")
     input_path = "web_input.mp4"
     output_path = "Bo0sViDClone_web_output.mp4"
     ready_to_process = False
 
     st.markdown("#### ✂️ 1. أداة قص وتقطيع جزء معين من الفيديو (Trimmer)")
-    enable_trim = st.checkbox("تفعيل قص جزء محدد من الفيديو", key="enable_trim_key")
+    enable_trim = st.checkbox("تفعيل قص جزء محدد من الفيديو", value=False)
     c_t1, c_t2 = st.columns(2)
-    with c_t1: trim_start = st.number_input("بداية القص (بالثواني):", min_value=0, value=0, key="trim_start_num")
-    with c_t2: trim_end = st.number_input("نهاية القص (بالثواني - 0 للكل):", min_value=0, value=0, key="trim_end_num")
+    with c_t1: trim_start = st.number_input("بداية القص (بالثواني):", min_value=0, value=0)
+    with c_t2: trim_end = st.number_input("نهاية القص (بالثواني - 0 للكل):", min_value=0, value=0)
 
     st.markdown("#### ⚡ 2. ضبط السرعة والمدّة المستهدفة للفيديو")
-    speed_mode = st.radio("طريقة معالجة مدة الفيديو:", ["تسريع / تبطيء يدوي", "مُطابقة تلقائية مع مدة مستهدفة (Smart Speed-up)"], key="speed_mode_main")
+    speed_mode = st.radio("طريقة معالجة مدة الفيديو:", ["تسريع / تبطيء يدوي", "مُطابقة تلقائية مع مدة مستهدفة (Smart Speed-up)"])
     if speed_mode == "تسريع / تبطيء يدوي":
-        manual_speed_factor = st.slider("مُعامل السرعة (1.0 عادي | 2.0 أسرع مرتين):", 0.5, 4.0, 1.0, key="speed_factor_slider")
+        manual_speed_factor = st.slider("مُعامل السرعة (1.0 عادي | 2.0 أسرع مرتين):", 0.5, 4.0, 1.0)
     else:
-        target_video_duration_sec = st.slider("المدة النهائية المستهدفة للفيديو (بالثواني):", 5, 120, 15, key="target_vid_dur_slider")
+        target_video_duration_sec = st.slider("المدة النهائية المستهدفة للفيديو (بالثواني):", 5, 120, 15)
 
     if option == "لصق رابط فيديو (يوتيوب، فيسبوك، تيك توك)":
         url = st.text_input("ضع الرابط:", placeholder="https://...", key="vid_url")
         if url and re.match(r'http[s]?://', url):
-            if st.button("🚀 ابدأ معالجة وتقطيع الفيديو", key="process_vid_url_btn"):
+            if st.button("🚀 ابدأ معالجة وتقطيع الفيديو"):
                 with st.spinner("جاري سحب المحتوى..."):
                     try:
                         downloaded_file = download_from_link(url)
@@ -649,8 +604,8 @@ with tab1:
                         ready_to_process = True
                     except Exception as e: st.error(f"خطأ في السحب: {str(e)}")
     else:
-        uploaded_file = st.file_uploader("اسحب الفيديو هنا", type=["mp4", "mov", "avi"], key="vid_file_uploader")
-        if uploaded_file is not None and st.button("⚙️ ابدأ معالجة وتقطيع الفيديو", key="process_vid_file_btn"):
+        uploaded_file = st.file_uploader("اسحب الفيديو هنا", type=["mp4", "mov", "avi"], key="vid_file")
+        if uploaded_file is not None and st.button("⚙️ ابدأ معالجة وتقطيع الفيديو"):
             with st.spinner("جاري تهيئة الملف..."):
                 if os.path.exists(input_path): os.remove(input_path)
                 with open(input_path, "wb") as f: f.write(uploaded_file.read())
@@ -687,7 +642,7 @@ with tab1:
                     audio_overlay = AudioFileClip(config.CUSTOM_AUDIO_TRACK).subclip(0, modified_clip.duration)
                     modified_clip = modified_clip.set_audio(audio_overlay)
                 
-                if ensure_valid_image(config.ACTIVE_LOGO_PATH):
+                if os.path.exists(config.ACTIVE_LOGO_PATH):
                     v_logo_w = logo_custom_w
                     v_logo_h = logo_custom_h
                     
@@ -711,22 +666,21 @@ with tab1:
 # ==================== التبويب الثاني (قوالب الصور والفيديو المتحرك) ====================
 with tab2:
     st.subheader("🖼️ مصنع تجميل صور المنتجات وفيديوهات السلايد شو الذكية")
+    uploaded_images = st.file_uploader("ارفع الصور هنا:", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
     
-    uploaded_images = st.file_uploader("ارفع الصور هنا (يمكنك تحديد صورة أو أكثر):", type=["jpg", "jpeg", "png"], accept_multiple_files=True, key="multi_img_uploader")
-    
-    show_orig_toggle = st.checkbox("👁️ عرض الصور الأصلية (قبل التعديل للمعاينة)", key="show_orig_key")
+    show_orig_toggle = st.checkbox("👁️ عرض الصور الأصلية (قبل التعديل للمعاينة)", value=False)
 
     if uploaded_images:
         if len(uploaded_images) > 1:
-            album_choice = st.radio("اختر نمط التصدير:", ("📥 ألبوم صور مفرودة منفصلة", "🎬 دمجهم فيديو متحرك (Slideshow)", "🖼️ تجميع في صورة واحدة (Collage)"), key="album_choice_radio")
+            album_choice = st.radio("اختر نمط التصدير:", ("📥 ألبوم صور مفرودة منفصلة", "🎬 دمجهم فيديو متحرك (Slideshow)", "🖼️ تجميع في صورة واحدة (Collage)"))
         else: album_choice = "📥 ألبوم صور مفرودة منفصلة"
 
         if show_orig_toggle:
-            st.info("📷 الصور الأصلية بدون أي إضافات أو تعديلات:")
+            st.info("📷 الصورة الأصلية بدون أي إضافات أو تعديلات:")
             for idx, img_f in enumerate(uploaded_images):
                 st.image(img_f, caption=f"أصل صورة {idx+1}", use_container_width=True)
         else:
-            if st.button("⚙️ ابدأ معالجة الصور", key="process_images_btn"):
+            if st.button("⚙️ ابدأ معالجة الصور"):
                 saved_paths = []
                 for i, img_file in enumerate(uploaded_images):
                     temp_p = f"temp_product_{i}.png"
@@ -799,23 +753,23 @@ with tab2:
 
 # ==================== التبويب الثالث (الرادار والوصف والتسعير) ====================
 with tab3:
-    st.subheader("🛰️ مركز الفحص والـ Forward وإعادة التسعير التلقائي ونشر تليجرام")
+    st.subheader("🛰️ مركز الفحص والـ Forward وإعادة التسعير التلقائي")
     col1, col2 = st.columns(2)
-    with col1: price_inc_rate = st.number_input("نسبة زيادة السعر (%):", min_value=0, max_value=100, value=config.DEFAULT_PRICE_INC_RATE, key="price_inc_num")
-    with col2: box_items_count = st.number_input("عدد القطع بالعلبة:", min_value=1, max_value=100, value=config.DEFAULT_BOX_ITEMS_COUNT, key="box_items_num")
-    fb_profile_link = st.text_input("رابط صفحتك للتواصل:", value="https://www.facebook.com/montgk1", key="fb_link_input")
+    with col1: price_inc_rate = st.number_input("نسبة زيادة السعر (%):", min_value=0, max_value=100, value=config.DEFAULT_PRICE_INC_RATE)
+    with col2: box_items_count = st.number_input("عدد القطع بالعلبة:", min_value=1, max_value=100, value=config.DEFAULT_BOX_ITEMS_COUNT)
+    fb_profile_link = st.text_input("رابط صفحتك للتواصل:", value="https://www.facebook.com/montgk1")
     
-    max_price_threshold = st.number_input("الحد الأقصى للسعر:", min_value=1, max_value=9999999, value=5000, key="max_price_num")
-    date_filter = st.radio("النطاق الزمني:", ("اليوم فقط", "الأمس واليوم", "قبل أمس والـ 3 أيام الأخيرة", "كل البوستات المتاحة للقناة"), index=3, horizontal=True, key="date_filter_radio")
+    max_price_threshold = st.number_input("الحد الأقصى للسعر:", min_value=1, max_value=9999999, value=5000)
+    date_filter = st.radio("النطاق الزمني:", ("اليوم فقط", "الأمس واليوم", "قبل أمس والـ 3 أيام الأخيرة", "كل البوستات المتاحة للقناة"), index=3, horizontal=True)
     
     st.write("---")
-    radar_mode = st.radio("مصدر المحتوى:", ("🛰️ سحب رادار حي وفوري", "📋 إدخل يدوي لبوست معموله Forward"), key="radar_mode_radio")
+    radar_mode = st.radio("مصدر المحتوى:", ("🛰️ سحب رادار حي وفوري", "📋 إدخل يدوي لبوست معموله Forward"), key="mode_9")
     
     if "cached_posts" not in st.session_state: st.session_state["cached_posts"] = []
 
     if radar_mode == "🛰️ سحب رادار حي وفوري":
-        target_channel_input = st.selectbox("اختر القناة:", current_channels, key="target_ch_select")
-        if st.button("🛰️ قنص المحتوى", key="fetch_radar_btn"):
+        target_channel_input = st.selectbox("اختر القناة:", current_channels)
+        if st.button("🛰️ قنص المحتوى"):
             with st.spinner("جاري السحب..."):
                 try:
                     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
@@ -868,16 +822,16 @@ with tab3:
                     else: st.error(f"❌ خطأ: {res.status_code}")
                 except Exception as e: st.error(f"خطأ: {str(e)}")
     else:
-        forwarded_text = st.text_area("نص البوست:", key="manual_fwd_text")
-        uploaded_image = st.file_uploader("الصورة:", key="forward_single_img_uploader")
-        if st.button("⚡ تعديل فوراً", key="manual_fwd_btn"):
+        forwarded_text = st.text_area("نص البوست:")
+        uploaded_image = st.file_uploader("الصورة:")
+        if st.button("⚡ تعديل فوراً"):
             if forwarded_text:
                 auto_price, old_str = extract_original_price_only(forwarded_text, max_limit=max_price_threshold)
                 st.session_state["cached_posts"] = [{"text": forwarded_text, "image": uploaded_image, "auto_price": auto_price, "old_str": old_str}]
 
     if st.session_state["cached_posts"]:
         st.write("---")
-        if st.button("📊 توليد شيت إكسيل Montgk", key="gen_excel_btn"):
+        if st.button("📊 توليد شيت إكسيل Montgk"):
             excel_data_list = []
             for i, item in enumerate(st.session_state["cached_posts"]):
                 excel_data_list.append({
@@ -891,7 +845,7 @@ with tab3:
             output_io = io.BytesIO()
             with pd.ExcelWriter(output_io, engine='openpyxl') as writer: df_excel.to_excel(writer, index=False, sheet_name="Montgk")
             st.success("✅ الشيت جاهز!")
-            st.download_button(label="📥 تحميل Excel", data=output_io.getvalue(), file_name="Montgk_Platform_Products.xlsx", key="download_excel_btn")
+            st.download_button(label="📥 تحميل Excel", data=output_io.getvalue(), file_name="Montgk_Platform_Products.xlsx")
         st.write("---")
 
         for idx, item in enumerate(st.session_state["cached_posts"]):
@@ -941,23 +895,7 @@ with tab3:
                 f"🔗 للتواصل وطلب المنتج كاش فوراً: {fb_profile_link}\n\n"
                 f"{auto_hashtags}"
             )
-            
-            edited_post_content = st.text_area(f"📋 البوست الجاهز والمقابل للتعديل {idx + 1}:", value=final_commercial_post, height=200, key=f"post_area_{idx}")
-            
-            pub_col1, pub_col2 = st.columns([2, 1])
-            with pub_col1:
-                target_pub_channel = st.text_input(f"يوزر القناة للنشر (منتج {idx+1}):", value=current_channels[0] if current_channels else "montgk", key=f"pub_ch_{idx}")
-            with pub_col2:
-                st.write("")
-                st.write("")
-                if st.button(f"🚀 نشر الآن #{idx+1}", key=f"send_tg_btn_{idx}"):
-                    img_to_send = item["image"] if isinstance(item["image"], str) else None
-                    success, msg = send_telegram_post(config.TELEGRAM_BOT_TOKEN, target_pub_channel, edited_post_content, img_to_send)
-                    if success:
-                        st.success(msg)
-                    else:
-                        st.error(msg)
-                        
+            st.text_area(f"📋 البوست الجاهز {idx + 1}:", value=final_commercial_post, height=200, key=f"post_area_{idx}")
             st.markdown("---")
 
 # ==================== التبويب الرابع (🔥 رادار الترندات واسطمبات البوستات) ====================
