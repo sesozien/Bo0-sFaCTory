@@ -3,14 +3,22 @@ import re
 import json
 import time
 import requests
+import threading
+import math
+from datetime import datetime, timedelta
 import streamlit as st
 from bs4 import BeautifulSoup
 import cv2
 import numpy as np
 from PIL import Image, ImageFilter, ImageDraw, ImageFont, ImageEnhance, ImageOps
 
-# مكتبات الفيديو والصوت بالطريقة الآمنة 100% والمتوافقة مع كل الإصدارات
-from moviepy.editor import VideoFileClip, ImageClip, CompositeVideoClip, AudioFileClip, concatenate_videoclips
+# مكتبات الفيديو والصوت الحديثة المتوافقة 100%
+from moviepy.video.io.VideoFileClip import VideoFileClip
+from moviepy.video.VideoClip import ImageClip
+from moviepy.video.compositing.CompositeVideoClip import CompositeVideoClip
+from moviepy.audio.io.AudioFileClip import AudioFileClip
+from moviepy.video.compositing.concatenate import concatenate_videoclips
+
 import moviepy.video.fx.all as vfx
 import yt_dlp
 import io
@@ -97,7 +105,7 @@ st.markdown(f"""
     <div class="web-banner">
         <div class="banner-title">🥷 Mr:- Bo0</div>
         <div class="banner-subtitle">{getattr(config, 'BRAND_NAME_AR', 'مصنع المحتوى الذكي')}</div>
-        <div class="banner-footer">📱 Smart Mobile Edition v3.1</div>
+        <div class="banner-footer">📱 Smart Mobile Edition v3.0</div>
     </div>
 """, unsafe_allow_html=True)
 
@@ -261,7 +269,7 @@ def process_image_template(image_path, blur_background=True, blur_intensity=12, 
 
     w, h = img.size
 
-    # معالجة اللوجو الذكية وتفريغ الخلفية البيضاء بنقاء تام
+    # معالجة اللوجو الذكية (تفريغ الخلفية البيضاء بنقاء وعدم التأثير على الجودة)
     active_logo_file = "logo.png" if os.path.exists("logo.png") else config.ACTIVE_LOGO_PATH
     if os.path.exists(active_logo_file):
         logo = Image.open(active_logo_file).convert("RGBA")
@@ -273,6 +281,7 @@ def process_image_template(image_path, blur_background=True, blur_intensity=12, 
             
         if remove_logo_bg:
             np_logo = np.array(logo)
+            # عزل الخلفية البيضاء والفاتحة بذكاء شديد والحفاظ على حواف اللوجو سليمة
             r_chan, g_chan, b_chan, a_chan = np_logo[:, :, 0], np_logo[:, :, 1], np_logo[:, :, 2], np_logo[:, :, 3]
             white_mask = (r_chan > 230) & (g_chan > 230) & (b_chan > 230)
             a_chan[white_mask] = 0
@@ -317,11 +326,18 @@ with st.sidebar:
 
     st.write("---")
     st.markdown("### 🎨 فلاتر الألوان الذكية")
-    st.selectbox("اختر فلتر لتحسين الصورة:", ["طبيعي (بدون فلتر)", "زاهي ومشرق (Vibrant Product)", "تباين دافئ (Warm Pop)", "سينمائي داكن (Cinematic Dark)", "أبيض وأسود فاخر (Black & White)"], key="color_preset")
+    st.selectbox(
+        "اختر فلتر لتحسين الصورة:",
+        ["طبيعي (بدون فلتر)", "زاهي ومشرق (Vibrant Product)", "تباين دافئ (Warm Pop)", "سينمائي داكن (Cinematic Dark)", "أبيض وأسود فاخر (Black & White)"],
+        key="color_preset"
+    )
 
     st.write("---")
     st.markdown("### 📐 أبعاد منصات العرض")
-    platform_dimension = st.selectbox("مقاس المنصة:", ["تلقائي (حجم الملف الأصلي)", "تيك توك / ريلز (9:16 - 1080x1920)", "يوتيوب عريض (16:9 - 1920x1080)", "فيسبوك وانستجرام مربع (1:1 - 1080x1080)"])
+    platform_dimension = st.selectbox(
+        "مقاس المنصة:",
+        ["تلقائي (حجم الملف الأصلي)", "تيك توك / ريلز (9:16 - 1080x1920)", "يوتيوب عريض (16:9 - 1920x1080)", "فيسبوك وانستجرام مربع (1:1 - 1080x1080)"]
+    )
     dim_map = {
         "تلقائي (حجم الملف الأصلي)": None,
         "تيك توك / ريلز (9:16 - 1080x1920)": (1080, 1920),
@@ -361,6 +377,7 @@ with st.sidebar:
     st.slider("حدة التفاصيل:", 0.0, 5.0, key="sharp_val")
     st.slider("جودة الضغط (%):", 10, 100, key="quality_val")
 
+    # معاينة اللوجو الحالي بذكاء
     current_logo_display = "logo.png" if os.path.exists("logo.png") else config.ACTIVE_LOGO_PATH
     if os.path.exists(current_logo_display):
         st.image(current_logo_display, caption="logo.png النشط حالياً", width=100)
