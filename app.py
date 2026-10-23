@@ -14,7 +14,7 @@ from moviepy.video.io.VideoFileClip import VideoFileClip
 from moviepy.video.VideoClip import ImageClip
 from moviepy.video.compositing.CompositeVideoClip import CompositeVideoClip
 from moviepy.audio.io.AudioFileClip import AudioFileClip
-from moviepy.video.compositing.concatenate import concatenate_videoclips as concat_videoclips
+from moviepy.editor import VideoFileClip, concatenate_videoclips
 import moviepy.video.fx as vfx
 import yt_dlp
 
