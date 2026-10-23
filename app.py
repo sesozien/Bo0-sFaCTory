@@ -11,7 +11,7 @@ from bs4 import BeautifulSoup
 import cv2
 import numpy as np
 from PIL import Image, ImageFilter, ImageDraw, ImageFont, ImageEnhance, ImageOps
-
+import moviepy
 # مكتبات الفيديو والصوت
 from moviepy.video.io.VideoFileClip import VideoFileClip
 from moviepy.video.VideoClip import ImageClip
