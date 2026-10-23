@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.py[cod]
+tmp_files/
+settings.json
+channels.json
+price_keywords.json
+active_logo.png
+default_logo.png
+web_input.mp4
+Bo0sViDClone_web_output.mp4
+slideshow_out.mp4
+temp_prod_*.png
+*.tmp

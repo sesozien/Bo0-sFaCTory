@@ -10,12 +10,10 @@ import streamlit as st
 from bs4 import BeautifulSoup
 
 # مكتبات الفيديو والصوت
-from moviepy.video.io.VideoFileClip import VideoFileClip
-from moviepy.video.VideoClip import ImageClip
-from moviepy.video.compositing.CompositeVideoClip import CompositeVideoClip
-from moviepy.audio.io.AudioFileClip import AudioFileClip
-from moviepy.editor import VideoFileClip, concatenate_videoclips
-import moviepy.video.fx as vfx
+# الكود الحالي مبني على واجهة MoviePy 1.x، لذلك requirements.txt يثبت 1.0.3.
+# MoviePy 2.x أزال moviepy.editor وغيّر set_*/fx، ولن يعمل مع هذا الكود دون ترحيل كامل.
+from moviepy.editor import AudioFileClip, CompositeVideoClip, ImageClip, VideoFileClip, concatenate_videoclips
+import moviepy.video.fx.all as vfx
 import yt_dlp
 
 # استيراد الإعدادات البسيطة من config
@@ -353,8 +351,30 @@ DEFAULT_SETTINGS = {
     "dynamic_brand_text": "Montgk Brand"
 }
 
-for k, v in DEFAULT_SETTINGS.items():
-    if k not in st.session_state: st.session_state[k] = v
+# نحمّل القيم المحفوظة مرة واحدة قبل إنشاء widgets؛ بذلك لا تعود checkbox
+# إلى حالتها الافتراضية بعد إعادة تشغيل Streamlit أو فتح جلسة جديدة.
+WIDGET_DEFAULTS = {
+    "c_preset": "طبيعي (بدون فلتر)",
+    "platform_dim": "تلقائي (حجم الملف الأصلي)",
+    "font_sel": "Cairo (عربي عريض فاخر)",
+    "l_pos": "فوق يمين (Top-Right)", "l_ox": 0, "l_oy": 0, "l_op": 0.8,
+    "logo_fit_auto": False, "rem_bg_chk": True, "logo_w": 200, "logo_h": 200,
+    "dynamic_brand_text": "Montgk Brand",
+    "b_pos": "تحت شمال (Bottom-Left)", "b_ox": 0, "b_oy": 0, "b_sc": 0.035, "b_cl": "#FFD700",
+    "e_text": "", "e_pos": "تحت يمين (Bottom-Right)", "e_ox": 0, "e_oy": 0, "e_sc": 0.025, "e_cl": "#FFFFFF",
+    "blur_bg": True, "blur_val": 15, "enhance_opt": True, "sharp_val": 2.0, "q_val": 95,
+    "enable_crop": False, "c_l": 0, "c_t": 0, "c_r": 0, "c_b": 0,
+    "audio_mode": "تراك المزيكا الحصري التلقائي", "vid_option_main": "لصق رابط فيديو (يوتيوب، فيسبوك، تيك توك)",
+    "enable_trim_key": False, "t_start": 0, "t_end": 0,
+    "sp_mode": "تسريع / تبطيء يدوي", "sp_factor": 1.0, "t_dur_sec": 15,
+    "show_orig_tab2": False, "p_rate": config.DEFAULT_PRICE_INC_RATE, "b_items": config.DEFAULT_BOX_ITEMS_COUNT,
+    "fb_url": "https://www.facebook.com/montgk1", "max_p": 5000,
+    "d_filt": "كل البوستات المتاحة للقناة", "r_mode": "🛰️ سحب رادار حي وفوري", "trend_cat": "الكل",
+}
+_saved_settings = config.load_settings()
+for k, v in {**DEFAULT_SETTINGS, **WIDGET_DEFAULTS}.items():
+    if k not in st.session_state:
+        st.session_state[k] = _saved_settings.get(k, v)
 
 st.markdown("""
     <style>
@@ -394,7 +414,7 @@ with st.sidebar:
     st.write("---")
     color_preset = st.selectbox("فلتر الألوان الذكي:", ["طبيعي (بدون فلتر)", "زاهي ومشرق (Vibrant Product)", "تباين دافئ (Warm Pop)", "سينمائي داكن (Cinematic Dark)", "أبيض وأسود فاخر (Black & White)"], key="c_preset")
     
-    platform_dim = st.selectbox("مَقاس منصة العرض:", ["تلقائي (حجم الملف الأصلي)", "تيك توك / ريلز (9:16 - 1080x1920)", "يوتيوب عريض (16:9 - 1920x1080)", "فيسبوك وانستجرام مربع (1:1 - 1080x1080)"])
+    platform_dim = st.selectbox("مَقاس منصة العرض:", ["تلقائي (حجم الملف الأصلي)", "تيك توك / ريلز (9:16 - 1080x1920)", "يوتيوب عريض (16:9 - 1920x1080)", "فيسبوك وانستجرام مربع (1:1 - 1080x1080)"], key="platform_dim")
     dim_map = {"تلقائي (حجم الملف الأصلي)": None, "تيك توك / ريلز (9:16 - 1080x1920)": (1080, 1920), "يوتيوب عريض (16:9 - 1920x1080)": (1920, 1080), "فيسبوك وانستجرام مربع (1:1 - 1080x1080)": (1080, 1080)}
     chosen_size = dim_map[platform_dim]
 
@@ -473,7 +493,7 @@ with st.sidebar:
     else:
         crop_l = crop_t = crop_r = crop_b = 0
 
-    audio_mode = st.radio("مصدر الصوت:", ["تراك المزيكا الحصري التلقائي", "رفع تراك أوديو MP3 مخصص من جهازك"])
+    audio_mode = st.radio("مصدر الصوت:", ["تراك المزيكا الحصري التلقائي", "رفع تراك أوديو MP3 مخصص من جهازك"], key="audio_mode")
     uploaded_custom_audio = st.file_uploader("ارفع الأوديو:", type=["mp3", "wav", "ogg"]) if audio_mode == "رفع تراك أوديو MP3 مخصص من جهازك" else None
 
 tab1, tab2, tab3, tab4 = st.tabs([
@@ -713,4 +733,7 @@ with tab4:
         if st.button("🚀 توليد اسطمبة البوست الذكية", key="btn_tpl"):
             st.code(f"🔥 عرض خاص على {sel_prod}!\n\n{user_body}\n\n{' '.join(data['hashtags'])}", language="markdown")
 
+# الحفظ يتم في نهاية كل rerun بعد تحديث widgets، فيحفظ checkbox والخيارات
+# تلقائيًا دون الحاجة إلى زر منفصل.
+config.save_settings(st.session_state)
 st.markdown(f"<br><p style='text-align: center; color: #2a4d69; font-weight: bold;'>{config.DEVELOPER_SIGNATURE}</p>", unsafe_allow_html=True)

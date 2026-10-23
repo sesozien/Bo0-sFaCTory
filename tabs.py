@@ -5,12 +5,9 @@ import streamlit as st
 from bs4 import BeautifulSoup
 from PIL import Image
 
-from moviepy.video.io.VideoFileClip import VideoFileClip
-from moviepy.video.VideoClip import ImageClip
-from moviepy.video.compositing.CompositeVideoClip import CompositeVideoClip
-from moviepy.audio.io.AudioFileClip import AudioFileClip
-from moviepy.video.compositing.concatenate import concatenate_videoclips as concat_videoclips
-import moviepy.video.fx as vfx
+# متوافق مع MoviePy 1.0.3 المثبت في requirements.txt.
+from moviepy.editor import AudioFileClip, CompositeVideoClip, ImageClip, VideoFileClip, concatenate_videoclips as concat_videoclips
+import moviepy.video.fx.all as vfx
 import yt_dlp
 
 import config
