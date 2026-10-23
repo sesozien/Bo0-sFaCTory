@@ -5,7 +5,8 @@ echo       ⚡ جاري إطلاق إمبراطورية مـنتــجـك ⚡
 echo =========================================
 echo.
 echo [+] Checking required packages...
-pip install streamlit pillow moviepy yt-dlp requests beautifulsoup4 opencv-python numpy
+rem MoviePy 1.0.3 is required because the app uses moviepy.editor and set_*/fx APIs.
+pip install -r requirements.txt
 echo.
 echo [+] Launching Streamlit Server...
 streamlit run app.py
