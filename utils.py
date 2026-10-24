@@ -1,5 +1,6 @@
 import os
 import re
+import hashlib
 import requests
 import numpy as np
 from PIL import Image, ImageFilter, ImageDraw, ImageFont, ImageEnhance, ImageOps
@@ -313,6 +314,66 @@ def generate_auto_hashtags(product_name):
     base_tags = ["#عروض_مصر", "#تسوق_اونلاين", "#تخفيضات", "#منتجات_تريند", "#توصيل_سريع"]
     if clean_name: base_tags.insert(0, f"#{clean_name}")
     return " ".join(base_tags)
+
+def supplier_code(channel_name):
+    """Create a short code from the channel name for the final post."""
+    name = re.sub(r"^@", "", str(channel_name or "")).strip()
+    name = re.sub(r"^ال", "", name)
+    letters = re.findall(r"[A-Za-z\u0621-\u064A]", name)
+    return "".join(letters[:2]).upper() or "NA"
+
+
+def normalize_product_text(text):
+    clean = re.sub(r"https?://\S+|www\.\S+", " ", text or "")
+    clean = re.sub(r"#\S+|@\S+", " ", clean)
+    clean = re.sub(r"01[0125]\d{8}", " ", clean)
+    clean = re.sub(r"(?:سعر|السعر|جنيه|جنية|ج)\s*[:\-]?\s*\d+", " ", clean, flags=re.IGNORECASE)
+    clean = re.sub(r"\d+\s*(?:جنيه|جنية|ج)", " ", clean, flags=re.IGNORECASE)
+    return " ".join(clean.split()).casefold()
+
+
+def product_identity(text, image_url=None):
+    image_name = ""
+    if image_url:
+        image_name = str(image_url).split("?", 1)[0].rstrip("/").rsplit("/", 1)[-1].casefold()
+    raw = f"{normalize_product_text(text)}|{image_name}"
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
+
+
+def compare_products(posts, channel_name, index=None):
+    """Compare identical description/image products seen across radar fetches."""
+    index = index if index is not None else {}
+    code = supplier_code(channel_name)
+    for item in posts:
+        item["source_channel"] = channel_name
+        item["source_code"] = code
+        key = product_identity(item.get("text", ""), item.get("image"))
+        item["comparison_key"] = key
+        previous = index.get(key)
+        item["comparison"] = None
+        current_price = int(item.get("auto_price") or 0)
+        if previous and previous.get("channel") != channel_name:
+            old_price = int(previous.get("price") or 0)
+            if current_price and old_price and old_price < current_price:
+                item["comparison"] = {"type": "cheaper", "price": old_price, "code": previous.get("code", "NA"), "channel": previous.get("channel", "")}
+            elif current_price and old_price and current_price < old_price:
+                item["comparison"] = {"type": "current_cheaper", "price": current_price, "code": code, "channel": channel_name}
+            elif current_price and old_price == current_price:
+                item["comparison"] = {"type": "same_price", "price": current_price, "code": previous.get("code", "NA"), "channel": previous.get("channel", "")}
+        if not previous or current_price and current_price < int(previous.get("price") or 0):
+            index[key] = {"price": current_price, "code": code, "channel": channel_name, "text": item.get("text", "")}
+    return posts
+
+
+def clean_product_text(text, source_channel=None):
+    clean = re.sub(r"https?://\S+|www\.\S+", "", text or "")
+    clean = re.sub(r"#\S+", "", clean)
+    clean = re.sub(r"01[0125]\d{8}", "", clean)
+    if source_channel:
+        clean = re.sub(rf"@?{re.escape(source_channel)}", "", clean, flags=re.IGNORECASE)
+    clean = " ".join(clean.split()).strip()
+    return f"{clean}\n\nMr :- Bo0" if clean else "Mr :- Bo0"
+
 
 def send_telegram_post(bot_token, channel_username, text_message, image_url=None):
     if not bot_token or bot_token == "ضع_التوكن_الافتراضي_هنا":
