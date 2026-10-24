@@ -17,6 +17,38 @@ def ensure_valid_image(image_path):
     except Exception:
         return False
 
+
+def remove_logo_background(logo, threshold=235):
+    """Remove only near-white pixels connected to the logo edges.
+
+    This preserves white text, crowns, borders, and other white details inside
+    the logo instead of deleting every white pixel globally.
+    """
+    rgba = np.array(logo.convert("RGBA"), dtype=np.uint8)
+    rgb = rgba[:, :, :3]
+    alpha = rgba[:, :, 3].copy()
+    near_white = np.all(rgb >= threshold, axis=2)
+    height, width = near_white.shape
+    visited = np.zeros_like(near_white, dtype=bool)
+    stack = []
+    for x in range(width):
+        if near_white[0, x]: stack.append((0, x))
+        if height > 1 and near_white[height - 1, x]: stack.append((height - 1, x))
+    for y in range(height):
+        if near_white[y, 0]: stack.append((y, 0))
+        if width > 1 and near_white[y, width - 1]: stack.append((y, width - 1))
+
+    while stack:
+        y, x = stack.pop()
+        if y < 0 or y >= height or x < 0 or x >= width or visited[y, x] or not near_white[y, x]:
+            continue
+        visited[y, x] = True
+        alpha[y, x] = 0
+        stack.extend(((y - 1, x), (y + 1, x), (y, x - 1), (y, x + 1)))
+
+    rgba[:, :, 3] = alpha
+    return Image.fromarray(rgba, "RGBA")
+
 def apply_color_preset(pil_img, preset_name):
     if preset_name == "زاهي ومشرق (Vibrant Product)":
         pil_img = ImageEnhance.Color(pil_img).enhance(1.35)
@@ -189,9 +221,7 @@ def process_image_template(image_path, blur_background=True, blur_intensity=12, 
                 logo = logo.resize((max(10, logo_custom_w), max(10, logo_custom_h)), Image.Resampling.LANCZOS)
                 
             if remove_logo_bg:
-                np_logo = np.array(logo)
-                new_a = np.where((np_logo[:, :, 0] > 235) & (np_logo[:, :, 1] > 235) & (np_logo[:, :, 2] > 235), 0, np_logo[:, :, 3])
-                logo.putalpha(Image.fromarray(new_a.astype('uint8')))
+                logo = remove_logo_background(logo)
 
             r, g, b, a = logo.split()
             a = a.point(lambda p: int(p * opacity_val))

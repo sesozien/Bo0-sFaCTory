@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import hashlib
 import requests
 import numpy as np
 from PIL import Image, ImageFilter, ImageDraw, ImageFont, ImageEnhance, ImageOps
@@ -31,6 +32,38 @@ def ensure_valid_image(image_path):
         return True
     except Exception:
         return False
+
+
+def remove_logo_background(logo, threshold=235):
+    """Remove only near-white pixels connected to the logo edges.
+
+    This preserves white text, crowns, borders, and other white details inside
+    the logo instead of deleting every white pixel globally.
+    """
+    rgba = np.array(logo.convert("RGBA"), dtype=np.uint8)
+    rgb = rgba[:, :, :3]
+    alpha = rgba[:, :, 3].copy()
+    near_white = np.all(rgb >= threshold, axis=2)
+    height, width = near_white.shape
+    visited = np.zeros_like(near_white, dtype=bool)
+    stack = []
+    for x in range(width):
+        if near_white[0, x]: stack.append((0, x))
+        if height > 1 and near_white[height - 1, x]: stack.append((height - 1, x))
+    for y in range(height):
+        if near_white[y, 0]: stack.append((y, 0))
+        if width > 1 and near_white[y, width - 1]: stack.append((y, width - 1))
+
+    while stack:
+        y, x = stack.pop()
+        if y < 0 or y >= height or x < 0 or x >= width or visited[y, x] or not near_white[y, x]:
+            continue
+        visited[y, x] = True
+        alpha[y, x] = 0
+        stack.extend(((y - 1, x), (y + 1, x), (y, x - 1), (y, x + 1)))
+
+    rgba[:, :, 3] = alpha
+    return Image.fromarray(rgba, "RGBA")
 
 def apply_color_preset(pil_img, preset_name):
     if preset_name == "زاهي ومشرق (Vibrant Product)":
@@ -203,9 +236,7 @@ def process_image_template(image_path, blur_background=True, blur_intensity=12, 
                 logo = logo.resize((max(10, logo_custom_w), max(10, logo_custom_h)), Image.Resampling.LANCZOS)
                 
             if remove_logo_bg:
-                np_logo = np.array(logo)
-                new_a = np.where((np_logo[:, :, 0] > 235) & (np_logo[:, :, 1] > 235) & (np_logo[:, :, 2] > 235), 0, np_logo[:, :, 3])
-                logo.putalpha(Image.fromarray(new_a.astype('uint8')))
+                logo = remove_logo_background(logo)
 
             r, g, b, a = logo.split()
             a = a.point(lambda p: int(p * opacity_val))
@@ -279,6 +310,66 @@ def extract_original_price_only(text, max_limit=None):
         if max_limit and val > max_limit: continue
         if val < 50000: return val, num_str
     return 0, ""
+
+def supplier_code(channel_name):
+    """Create a short code from the channel name for the final post."""
+    name = re.sub(r"^@", "", str(channel_name or "")).strip()
+    name = re.sub(r"^ال", "", name)
+    letters = re.findall(r"[A-Za-z\u0621-\u064A]", name)
+    return "".join(letters[:2]).upper() or "NA"
+
+
+def normalize_product_text(text):
+    clean = re.sub(r"https?://\S+|www\.\S+", " ", text or "")
+    clean = re.sub(r"#\S+|@\S+", " ", clean)
+    clean = re.sub(r"01[0125]\d{8}", " ", clean)
+    clean = re.sub(r"(?:سعر|السعر|جنيه|جنية|ج)\s*[:\-]?\s*\d+", " ", clean, flags=re.IGNORECASE)
+    clean = re.sub(r"\d+\s*(?:جنيه|جنية|ج)", " ", clean, flags=re.IGNORECASE)
+    return " ".join(clean.split()).casefold()
+
+
+def product_identity(text, image_url=None):
+    image_name = ""
+    if image_url:
+        image_name = str(image_url).split("?", 1)[0].rstrip("/").rsplit("/", 1)[-1].casefold()
+    raw = f"{normalize_product_text(text)}|{image_name}"
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
+
+
+def compare_products(posts, channel_name):
+    """Compare identical description/image products seen across radar fetches."""
+    index = st.session_state.setdefault("product_price_index", {})
+    code = supplier_code(channel_name)
+    for item in posts:
+        item["source_channel"] = channel_name
+        item["source_code"] = code
+        key = product_identity(item.get("text", ""), item.get("image"))
+        item["comparison_key"] = key
+        previous = index.get(key)
+        item["comparison"] = None
+        current_price = int(item.get("auto_price") or 0)
+        if previous and previous.get("channel") != channel_name:
+            old_price = int(previous.get("price") or 0)
+            if current_price and old_price and old_price < current_price:
+                item["comparison"] = {"type": "cheaper", "price": old_price, "code": previous.get("code", "NA"), "channel": previous.get("channel", "")}
+            elif current_price and old_price and current_price < old_price:
+                item["comparison"] = {"type": "current_cheaper", "price": current_price, "code": code, "channel": channel_name}
+            elif current_price and old_price == current_price:
+                item["comparison"] = {"type": "same_price", "price": current_price, "code": previous.get("code", "NA"), "channel": previous.get("channel", "")}
+        if not previous or current_price and current_price < int(previous.get("price") or 0):
+            index[key] = {"price": current_price, "code": code, "channel": channel_name, "text": item.get("text", "")}
+    return posts
+
+
+def clean_product_text(text, source_channel=None):
+    clean = re.sub(r"https?://\S+|www\.\S+", "", text or "")
+    clean = re.sub(r"#\S+", "", clean)
+    clean = re.sub(r"01[0125]\d{8}", "", clean)
+    if source_channel:
+        clean = re.sub(rf"@?{re.escape(source_channel)}", "", clean, flags=re.IGNORECASE)
+    clean = " ".join(clean.split()).strip()
+    return f"{clean}\n\nMr :- Bo0" if clean else "Mr :- Bo0"
+
 
 def generate_smart_ai_description(raw_text):
     clean = re.sub(r'http[s]?://\S+|www\.\S+', '', raw_text)
@@ -635,6 +726,7 @@ with tab2:
 
 with tab3:
     st.subheader("🛰️ مركز الفحص والـ Forward وإعادة التسعير الذكي ونشر تليجرام")
+    st.caption("💡 للمقارنة: اسحب منتجات القناة الأولى ثم اختر قناة أخرى واسحبها؛ عند تطابق الوصف والصورة سيظهر لك السعر الأرخص مع checkbox للموافقة قبل النشر.")
     col1, col2 = st.columns(2)
     with col1: price_inc_rate = st.number_input("نسبة زيادة السعر (%):", min_value=0, max_value=100, value=config.DEFAULT_PRICE_INC_RATE, key="p_rate")
     with col2: box_items_count = st.number_input("عدد القطع بالعلبة:", min_value=1, max_value=100, value=config.DEFAULT_BOX_ITEMS_COUNT, key="b_items")
@@ -665,8 +757,8 @@ with tab3:
                                     m = re.search(r"url\(['\"]?(.*?)['\"]?\)", photo_tag.get("style", ""))
                                     if m: photo_url = 'https:' + m.group(1) if m.group(1).startswith('//') else m.group(1)
                                 auto_price, old_str = extract_original_price_only(p_text, max_limit=max_price)
-                                temp_collected.append({"text": p_text, "image": photo_url, "auto_price": auto_price, "old_str": old_str})
-                        st.session_state["cached_posts"] = temp_collected
+                                temp_collected.append({"text": p_text, "image": photo_url, "auto_price": auto_price, "old_str": old_str, "source_channel": target_ch})
+                        st.session_state["cached_posts"] = compare_products(temp_collected, target_ch)
                         st.success(f"🎯 تم قنص وتحليل {len(temp_collected)} بوست بذكاء!")
                 except Exception as e: st.error(f"خطأ: {str(e)}")
     else:
@@ -675,16 +767,30 @@ with tab3:
         if st.button("⚡ تحليل وتعديل فوراً", key="btn_man"):
             if fwd_text:
                 auto_price, old_str = extract_original_price_only(fwd_text, max_limit=max_price)
-                st.session_state["cached_posts"] = [{"text": fwd_text, "image": fwd_img, "auto_price": auto_price, "old_str": old_str}]
+                st.session_state["cached_posts"] = compare_products([{ "text": fwd_text, "image": fwd_img, "auto_price": auto_price, "old_str": old_str }], "manual")
 
     if st.session_state["cached_posts"]:
         for idx, item in enumerate(st.session_state["cached_posts"]):
             st.markdown(f"#### 📦 منتج رقم {idx + 1}")
             if item["image"]: st.image(item["image"], width=250)
             orig_p = st.number_input(f"السعر الأصلي المكتشف {idx+1}:", min_value=0, value=int(item["auto_price"]), key=f"orig_p_{idx}")
-            new_p = int(orig_p * (1 + (price_inc_rate / 100)))
-            
-            profit_margin = new_p - orig_p
+            effective_orig_p = int(orig_p)
+            effective_code = item.get("source_code", supplier_code(item.get("source_channel", "manual")))
+            comparison = item.get("comparison")
+            if comparison and comparison["type"] == "cheaper":
+                st.warning(f"🔎 نفس المنتج موجود عند المورد {comparison['channel']} بسعر أقل: {comparison['price']} جنيه — الكود {comparison['code']}")
+                approve_key = f"approve_compare_{idx}_{item.get('comparison_key', 'x')}"
+                approve_cheaper = st.checkbox("اعتماد المورد الأرخص والسعر المقترح", key=approve_key)
+                if approve_cheaper:
+                    effective_orig_p = int(comparison["price"])
+                    effective_code = comparison["code"]
+            elif comparison and comparison["type"] == "current_cheaper":
+                st.success(f"✅ المنتج الحالي أرخص من المورد السابق بسعر {comparison['price']} جنيه — الكود {effective_code}")
+            elif comparison and comparison["type"] == "same_price":
+                st.info("ℹ️ المنتج بنفس السعر موجود سابقًا؛ لا تعِد نشره إلا بعد تعديل الوصف أو السعر.")
+
+            new_p = int(effective_orig_p * (1 + (price_inc_rate / 100)))
+            profit_margin = new_p - effective_orig_p
             st.success(f"💵 **حاسبة الأرباح الذكية:** المكسب المتوقع في القطعة الواحدة = **{profit_margin} جنيه** (بنسبة زيادة {price_inc_rate}%)")
             
             smart_desc = generate_smart_ai_description(item["text"])
@@ -693,14 +799,14 @@ with tab3:
             st.info("💡 **الوصف الذكي المقترح بواسطة النظام:**")
             st.caption(smart_desc)
             
-            apply_smart = st.checkbox(f"🔄 اعتماد الوصف الذكي لمنتج {idx+1}؟", value=False, key=f"ai_chk_{idx}")
+            apply_smart = st.checkbox(f"🔄 اعتماد الوصف الذكي لمنتج {idx+1}؟", key=f"ai_chk_{idx}")
             
             if apply_smart:
-                final_post = f"{smart_desc}\n\n📌 سعر العرض الجديد: {new_p} ج\n🔗 للتواصل: {fb_link}\n\n{auto_tags}"
+                final_post = f"{smart_desc}\n\n📌 سعر العرض الجديد: {new_p} ج\n🔖 كود المورد: {effective_code}\n🔗 للتواصل: {fb_link}\n\n{auto_tags}"
             else:
-                clean_t = re.sub(r'#\w+|http[s]?://\S+', '', item["text"])
+                clean_t = clean_product_text(item["text"], item.get("source_channel"))
                 final_desc = clean_t.replace(item["old_str"], str(new_p), 1) if item["old_str"] and item["old_str"] in clean_t else clean_t + f"\nالسعر: {new_p} ج"
-                final_post = f"{final_desc}\n\n📌 سعر العرض الجديد: {new_p} ج\n🔗 للتواصل: {fb_link}"
+                final_post = f"{final_desc}\n\n📌 سعر العرض الجديد: {new_p} ج\n🔖 كود المورد: {effective_code}\n🔗 للتواصل: {fb_link}"
             
             post_content = st.text_area(f"البوست النهائي {idx+1}:", value=final_post, height=150, key=f"post_txt_{idx}")
             
