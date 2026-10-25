@@ -71,11 +71,35 @@ def render_tab_video(chosen_size, logo_position_choice, logo_offset_x, logo_offs
         except Exception as exc: st.error(f"خطأ: {exc}")
 
 
-def render_tab_images(blur_bg_opt, blur_intensity_val, logo_opacity, fit_auto_logo, logo_custom_w, logo_custom_h, brand_text_scale, brand_color, brand_position_choice, brand_offset_x, brand_offset_y, extra_brand_suffix, extra_text_scale, extra_color, extra_position_choice, extra_offset_x, extra_offset_y, chosen_size, enhance_quality_opt, sharpness_slider_val, quality_slider_val, logo_position_choice, logo_offset_x, logo_offset_y, color_preset, enable_crop_opt, crop_l, crop_t, crop_r, crop_b, total_target_video_duration, image_duration_per_slide, audio_mode, uploaded_custom_audio, font_choice, remove_logo_bg=True):
+def render_tab_images(blur_bg_opt, blur_intensity_val, logo_opacity, fit_auto_logo, logo_custom_w, logo_custom_h, brand_text_scale, brand_color, brand_position_choice, brand_offset_x, brand_offset_y, extra_brand_suffix, extra_text_scale, extra_color, extra_position_choice, extra_offset_x, extra_offset_y, chosen_size, enhance_quality_opt, sharpness_slider_val, quality_slider_val, logo_position_choice, logo_offset_x, logo_offset_y, color_preset, enable_crop_opt, crop_l, crop_t, crop_r, crop_b, total_target_video_duration, image_duration_per_slide, audio_mode, uploaded_custom_audio, font_choice, remove_logo_bg=True, smart_logo_position=False):
     st.subheader("🖼️ مصنع تجميل صور المنتجات وفيديوهات السلايد شو الذكية")
     uploaded_images = st.file_uploader("ارفع الصور:", type=["jpg", "jpeg", "png"], accept_multiple_files=True, key="img_up_tab2")
     show_orig_toggle = st.checkbox("👁️ عرض الصور الأصلية", key="show_orig_tab2")
+    st.info("✂️ القص اليدوي موجود في الشريط الجانبي: فعّل Crop وحدد القص من كل اتجاه قبل بدء المعالجة.")
     if not uploaded_images: return
+
+    st.markdown("### 📣 إعلان المنتج من الصورة")
+    st.caption("اكتب تفاصيل أو اسطمبة اختيارية. عند توفر OPENAI_API_KEY سيقرأ النظام الصورة ويكتب إعلانًا عربيًا تلقائيًا؛ وبدونه سيستخدم القالب المحلي بدل توقف التطبيق.")
+    ad_details = st.text_input("اسم المنتج أو تفاصيله:", key="ad_details")
+    ad_template = st.text_area("اسطمبة الإعلان اليدوية (اختياري):", placeholder="مثال: {المنتج} — جودة عالية، اطلب الآن...", key="ad_template")
+    ad_col1, ad_col2 = st.columns(2)
+    with ad_col1:
+        if st.button("🔥 جلب هاشتاجات اليوم", key="fetch_trending_tags"):
+            st.session_state.trending_hashtags = utils.get_trending_hashtags()
+    with ad_col2:
+        if st.button("🤖 اقرأ الصورة واكتب إعلان", key="generate_image_ad"):
+            tags = st.session_state.get("trending_hashtags") or utils.get_trending_hashtags()
+            generated, vision_used = utils.generate_product_ad(uploaded_images[0].getvalue(), ad_template, ad_details, tags)
+            st.session_state.generated_ad_text = generated
+            st.session_state.generated_ad_vision = vision_used
+    if "generated_ad_text" not in st.session_state:
+        st.session_state.generated_ad_text = ""
+    if st.session_state.generated_ad_text:
+        if not st.session_state.get("generated_ad_vision", False):
+            st.warning("تم استخدام القالب المحلي. للقراءة الفعلية لتفاصيل الصورة أضف OPENAI_API_KEY في Secrets الخاصة بـ Streamlit.")
+        st.text_area("البوست الإعلاني الجاهز للتعديل والنسخ:", key="generated_ad_text", height=220)
+    if st.session_state.get("trending_hashtags"):
+        st.caption("هاشتاجات اليوم: " + " ".join(st.session_state.trending_hashtags))
     album_choice = "📥 ألبوم صور مفرودة منفصلة" if len(uploaded_images) == 1 else st.radio("اختر نمط التصدير:", ("📥 ألبوم صور مفرودة منفصلة", "🎬 دمجهم فيديو متحرك (Slideshow)", "🖼️ تجميع في صورة واحدة (Collage)"), key="alb_choice_tab2")
     if show_orig_toggle:
         for idx, img_file in enumerate(uploaded_images): st.image(img_file, caption=f"أصل صورة {idx + 1}", use_container_width=True)
@@ -85,7 +109,7 @@ def render_tab_images(blur_bg_opt, blur_intensity_val, logo_opacity, fit_auto_lo
     for index, img_file in enumerate(uploaded_images):
         temp_path = os.path.join(config.TMP_DIR, f"temp_prod_{index}.png")
         with open(temp_path, "wb") as stream: stream.write(img_file.getvalue())
-        saved_paths.append(utils.process_image_template(temp_path, blur_background=blur_bg_opt, blur_intensity=blur_intensity_val, opacity_val=logo_opacity, fit_auto_logo=fit_auto_logo, logo_custom_w=logo_custom_w, logo_custom_h=logo_custom_h, brand_text_scale=brand_text_scale, brand_color=brand_color, brand_pos=brand_position_choice, brand_off_x=brand_offset_x, brand_off_y=brand_offset_y, extra_text=extra_brand_suffix, extra_text_scale=extra_text_scale, extra_color=extra_color, extra_pos=extra_position_choice, extra_off_x=extra_offset_x, extra_off_y=extra_offset_y, target_size=chosen_size, enhance_quality=enhance_quality_opt, sharpness_val=sharpness_slider_val, quality_val=quality_slider_val, logo_pos_mode=logo_position_choice, logo_off_x=logo_offset_x, logo_off_y=logo_offset_y, color_preset=color_preset, enable_crop=enable_crop_opt, c_left=crop_l, c_top=crop_t, c_right=crop_r, c_bottom=crop_b, font_choice=font_choice, remove_logo_bg=remove_logo_bg))
+        saved_paths.append(utils.process_image_template(temp_path, blur_background=blur_bg_opt, blur_intensity=blur_intensity_val, opacity_val=logo_opacity, fit_auto_logo=fit_auto_logo, logo_custom_w=logo_custom_w, logo_custom_h=logo_custom_h, brand_text_scale=brand_text_scale, brand_color=brand_color, brand_pos=brand_position_choice, brand_off_x=brand_offset_x, brand_off_y=brand_offset_y, extra_text=extra_brand_suffix, extra_text_scale=extra_text_scale, extra_color=extra_color, extra_pos=extra_position_choice, extra_off_x=extra_offset_x, extra_off_y=extra_offset_y, target_size=chosen_size, enhance_quality=enhance_quality_opt, sharpness_val=sharpness_slider_val, quality_val=quality_slider_val, logo_pos_mode=logo_position_choice, logo_off_x=logo_offset_x, logo_off_y=logo_offset_y, color_preset=color_preset, enable_crop=enable_crop_opt, c_left=crop_l, c_top=crop_t, c_right=crop_r, c_bottom=crop_b, font_choice=font_choice, remove_logo_bg=remove_logo_bg, smart_logo_position=smart_logo_position))
         if os.path.exists(temp_path): os.remove(temp_path)
     if album_choice == "📥 ألبوم صور مفرودة منفصلة":
         st.success("🎉 تمت المعالجة بنجاح!")

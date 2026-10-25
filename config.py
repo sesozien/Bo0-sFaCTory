@@ -25,7 +25,7 @@ DEFAULT_BOX_ITEMS_COUNT = 12
 # فقط القيم البسيطة التي يمكن تحويلها بأمان إلى JSON تُحفظ بين جلسات Streamlit.
 PERSISTED_SETTING_KEYS = {
     "c_preset", "platform_dim", "font_sel", "l_pos", "l_ox", "l_oy", "l_op",
-    "logo_fit_auto", "rem_bg_chk", "logo_w", "logo_h", "dynamic_brand_text",
+    "logo_fit_auto", "rem_bg_chk", "logo_mode", "logo_w", "logo_h", "dynamic_brand_text",
     "b_pos", "b_ox", "b_oy", "b_sc", "b_cl", "e_text", "e_pos", "e_ox",
     "e_oy", "e_sc", "e_cl", "blur_bg", "blur_val", "enhance_opt", "sharp_val",
     "q_val", "enable_crop", "c_l", "c_t", "c_r", "c_b", "audio_mode",

@@ -21,7 +21,7 @@ DEFAULT_WIDGETS = {
     "platform_dim": "تلقائي (حجم الملف الأصلي)",
     "font_sel": "Cairo (عربي عريض فاخر)",
     "l_pos": "فوق يمين (Top-Right)", "l_ox": 0, "l_oy": 0, "l_op": 0.8,
-    "logo_fit_auto": False, "rem_bg_chk": True, "logo_w": 200, "logo_h": 200,
+    "logo_fit_auto": False, "rem_bg_chk": True, "logo_mode": "🤖 تلقائي ذكي", "logo_w": 200, "logo_h": 200,
     "dynamic_brand_text": "Montgk Brand",
     "b_pos": "تحت شمال (Bottom-Left)", "b_ox": 0, "b_oy": 0, "b_sc": 0.035, "b_cl": "#FFD700",
     "e_text": "", "e_pos": "تحت يمين (Bottom-Right)", "e_ox": 0, "e_oy": 0, "e_sc": 0.025, "e_cl": "#FFFFFF",
@@ -95,6 +95,8 @@ def render_sidebar():
         st.write("---")
         st.markdown("### 🎯 اللوجو والكتابة")
         logo_positions = ["إحداثيات حرة ومباشرة (Custom X/Y)", "فوق يمين (Top-Right)", "فوق شمال (Top-Left)", "في المنتصف تماماً (Center)", "تحت يمين (Bottom-Right)", "تحت شمال (Bottom-Left)"]
+        logo_mode = st.radio("طريقة وضع اللوجو:", ("🤖 تلقائي ذكي", "✋ يدوي"), horizontal=True, key="logo_mode")
+        st.caption("التلقائي يختار الركن الأقل ازدحامًا، واليدوي يستخدم المكان والإحداثيات التي تحددها.")
         logo_pos = st.selectbox("مكان اللوجو الأساسي:", logo_positions, key="l_pos")
         logo_ox = st.slider("الإحداثي الأفقي (X):", -1000, 1000, key="l_ox")
         logo_oy = st.slider("الإحداثي الرأسي (Y):", -1000, 1000, key="l_oy")
@@ -133,7 +135,7 @@ def render_sidebar():
         enhance = st.checkbox("تفعيل فلتر الجودة والحدة", key="enhance_opt")
         sharp = st.slider("حدة التفاصيل:", 0.0, 5.0, key="sharp_val")
         quality = st.slider("جودة الضغط (%):", 10, 100, key="q_val")
-        enable_crop = st.checkbox("تفعيل قص أطراف الصور (Crop)", key="enable_crop")
+        enable_crop = st.checkbox("✂️ تفعيل قص أطراف الصور (Crop)", key="enable_crop")
         crop = [st.slider(label, 0, 500, key=key) for label, key in [("قص يسار:", "c_l"), ("قص أعلى:", "c_t"), ("قص يمين:", "c_r"), ("قص أسفل:", "c_b")]] if enable_crop else [0, 0, 0, 0]
         audio_mode = st.radio("مصدر الصوت:", ["تراك المزيكا الحصري التلقائي", "رفع تراك أوديو MP3 مخصص من جهازك"], key="audio_mode")
         custom_audio = st.file_uploader("ارفع الأوديو:", type=["mp3", "wav", "ogg"], key="custom_audio") if audio_mode.startswith("رفع") else None
@@ -141,7 +143,7 @@ def render_sidebar():
     return {
         "chosen_size": chosen_size, "font_choice": font_choice, "logo_pos": logo_pos,
         "logo_ox": logo_ox, "logo_oy": logo_oy, "logo_opacity": logo_opacity,
-        "fit_auto_logo": fit_auto_logo, "remove_logo_bg": remove_logo_bg, "logo_w": logo_w, "logo_h": logo_h,
+        "fit_auto_logo": fit_auto_logo, "smart_logo": logo_mode == "🤖 تلقائي ذكي", "remove_logo_bg": remove_logo_bg, "logo_w": logo_w, "logo_h": logo_h,
         "brand_pos": brand_pos, "brand_ox": brand_ox, "brand_oy": brand_oy, "brand_sc": brand_sc, "brand_cl": brand_cl,
         "extra_suffix": extra_suffix, "extra_pos": extra_pos, "extra_ox": extra_ox, "extra_oy": extra_oy, "extra_sc": extra_sc, "extra_cl": extra_cl,
         "blur_bg": blur_bg, "blur_val": blur_val, "enhance": enhance, "sharp": sharp, "quality": quality,
@@ -161,7 +163,7 @@ def main():
     with tab1:
         tabs.render_tab_video(settings["chosen_size"], settings["logo_pos"], settings["logo_ox"], settings["logo_oy"], settings["logo_opacity"], settings["logo_w"], settings["logo_h"], settings["audio_mode"], settings["custom_audio"])
     with tab2:
-        tabs.render_tab_images(settings["blur_bg"], settings["blur_val"], settings["logo_opacity"], settings["fit_auto_logo"], settings["logo_w"], settings["logo_h"], settings["brand_sc"], settings["brand_cl"], settings["brand_pos"], settings["brand_ox"], settings["brand_oy"], settings["extra_suffix"], settings["extra_sc"], settings["extra_cl"], settings["extra_pos"], settings["extra_ox"], settings["extra_oy"], settings["chosen_size"], settings["enhance"], settings["sharp"], settings["quality"], settings["logo_pos"], settings["logo_ox"], settings["logo_oy"], st.session_state.c_preset, settings["crop"] != [0, 0, 0, 0], *settings["crop"], 60, 5, settings["audio_mode"], settings["custom_audio"], settings["font_choice"], settings["remove_logo_bg"])
+        tabs.render_tab_images(settings["blur_bg"], settings["blur_val"], settings["logo_opacity"], settings["fit_auto_logo"], settings["logo_w"], settings["logo_h"], settings["brand_sc"], settings["brand_cl"], settings["brand_pos"], settings["brand_ox"], settings["brand_oy"], settings["extra_suffix"], settings["extra_sc"], settings["extra_cl"], settings["extra_pos"], settings["extra_ox"], settings["extra_oy"], settings["chosen_size"], settings["enhance"], settings["sharp"], settings["quality"], settings["logo_pos"], settings["logo_ox"], settings["logo_oy"], st.session_state.c_preset, settings["crop"] != [0, 0, 0, 0], *settings["crop"], 60, 5, settings["audio_mode"], settings["custom_audio"], settings["font_choice"], settings["remove_logo_bg"], settings["smart_logo"])
     with tab3:
         tabs.render_tab_radar(channels)
     with tab4:

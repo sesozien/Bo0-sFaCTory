@@ -1,6 +1,8 @@
 import os
 import re
 import hashlib
+import base64
+import xml.etree.ElementTree as ET
 import requests
 import numpy as np
 from PIL import Image, ImageFilter, ImageDraw, ImageFont, ImageEnhance, ImageOps
@@ -64,30 +66,47 @@ def apply_color_preset(pil_img, preset_name):
         pil_img = ImageOps.grayscale(pil_img).convert("RGBA")
     return pil_img
 
-def get_selected_font(font_choice, font_size=24):
-    font_urls = {
-        "Cairo (عربي عريض فاخر)": "https://github.com/google/fonts/raw/main/ofl/cairo/Cairo-Bold.ttf",
-        "Tajawal (عربي أنيق وانسيابي)": "https://github.com/google/fonts/raw/main/ofl/tajawal/Tajawal-Bold.ttf",
-        "Amiri (عربي كلاسيكي أصيل)": "https://github.com/google/fonts/raw/main/ofl/amiri/Amiri-Bold.ttf",
-        "Roboto (إنجليزي مودرن وسريع)": "https://github.com/google/fonts/raw/main/ofl/roboto/Roboto-Bold.ttf",
-        "Montserrat (إنجليزي عريض وبارز)": "https://github.com/google/fonts/raw/main/ofl/montserrat/Montserrat-Bold.ttf"
+def _contains_arabic(text):
+    return bool(re.search(r"[\u0600-\u06FF]", text or ""))
+
+
+def get_selected_font(font_choice, font_size=24, text=""):
+    """Load a real Arabic-capable font from the repository before any fallback."""
+    project_dir = os.path.dirname(os.path.abspath(__file__))
+    local_fonts = {
+        "Cairo (عربي عريض فاخر)": os.path.join(project_dir, "Cairo", "static", "Cairo-Bold.ttf"),
+        "Tajawal (عربي أنيق وانسيابي)": os.path.join(project_dir, "Cairo", "static", "Cairo-Bold.ttf"),
+        "Amiri (عربي كلاسيكي أصيل)": os.path.join(project_dir, "Cairo", "static", "Cairo-Bold.ttf"),
     }
-    target_url = font_urls.get(font_choice, font_urls["Cairo (عربي عريض فاخر)"])
-    font_dir = os.path.join(os.path.expanduser("~"), ".fonts")
-    os.makedirs(font_dir, exist_ok=True)
-    font_filename = font_choice.split()[0] + "-Bold.ttf"
-    font_path = os.path.join(font_dir, font_filename)
-    
-    if not os.path.exists(font_path):
-        try:
-            r = requests.get(target_url, timeout=15)
-            with open(font_path, "wb") as f: f.write(r.content)
-        except:
-            pass
+    font_urls = {
+        "Roboto (إنجليزي مودرن وسريع)": "https://github.com/google/fonts/raw/main/ofl/roboto/Roboto-Bold.ttf",
+        "Montserrat (إنجليزي عريض وبارز)": "https://github.com/google/fonts/raw/main/ofl/montserrat/Montserrat-Bold.ttf",
+    }
+    # Any Arabic text must use the checked-in Cairo font, even if the user selected an English font.
+    if _contains_arabic(text) or font_choice in local_fonts:
+        font_path = local_fonts["Cairo (عربي عريض فاخر)"]
+    else:
+        font_path = local_fonts.get(font_choice)
+        if not font_path:
+            font_dir = os.path.join(os.path.expanduser("~"), ".fonts")
+            os.makedirs(font_dir, exist_ok=True)
+            font_path = os.path.join(font_dir, font_choice.split()[0] + "-Bold.ttf")
+            if not os.path.exists(font_path) and font_choice in font_urls:
+                try:
+                    response = requests.get(font_urls[font_choice], timeout=15)
+                    response.raise_for_status()
+                    with open(font_path, "wb") as stream:
+                        stream.write(response.content)
+                except (OSError, requests.RequestException):
+                    pass
     try:
         return ImageFont.truetype(font_path, font_size)
-    except:
-        return ImageFont.load_default()
+    except (OSError, TypeError):
+        cairo_path = local_fonts["Cairo (عربي عريض فاخر)"]
+        try:
+            return ImageFont.truetype(cairo_path, font_size)
+        except (OSError, TypeError):
+            return ImageFont.load_default()
 
 def hex_to_rgb(hex_str):
     hex_str = hex_str.lstrip('#')
@@ -121,6 +140,24 @@ def calculate_exact_position(img_w, img_h, elem_w, elem_h, pos_mode, off_x, off_
     if y + elem_h > img_h: y = max(0, img_h - elem_h)
     
     return int(x), int(y)
+
+def choose_smart_logo_position(image, logo_size, margin=15):
+    """Choose the least visually busy corner for the logo."""
+    rgba = image.convert("RGB")
+    width, height = rgba.size
+    logo_w, logo_h = logo_size
+    candidates = {
+        "فوق يمين (Top-Right)": (max(0, width - logo_w - margin), margin),
+        "فوق شمال (Top-Left)": (margin, margin),
+        "تحت يمين (Bottom-Right)": (max(0, width - logo_w - margin), max(0, height - logo_h - margin)),
+        "تحت شمال (Bottom-Left)": (margin, max(0, height - logo_h - margin)),
+    }
+    scores = {}
+    for name, (x, y) in candidates.items():
+        patch = np.asarray(rgba.crop((x, y, min(width, x + logo_w), min(height, y + logo_h))), dtype=np.float32)
+        scores[name] = float(patch.std()) if patch.size else float("inf")
+    return min(scores, key=scores.get)
+
 
 def draw_single_custom_text(img, text, font, fill_color, pos_mode, off_x, off_y):
     if not text.strip(): return
@@ -160,7 +197,7 @@ def process_image_template(image_path, blur_background=True, blur_intensity=12, 
                            extra_text="", extra_text_scale=0.025, extra_color="#FFFFFF", extra_pos="تحت يمين (Bottom-Right)", extra_off_x=0, extra_off_y=0,
                            target_size=None, enhance_quality=True, sharpness_val=2.0, quality_val=95, logo_pos_mode="فوق يمين (Top-Right)", logo_off_x=0, logo_off_y=0,
                            enable_watermark_pattern=False, color_preset="طبيعي (بدون فلتر)",
-                           enable_crop=False, c_left=0, c_top=0, c_right=0, c_bottom=0, font_choice="Cairo (عربي عريض فاخر)", remove_logo_bg=True):
+                           enable_crop=False, c_left=0, c_top=0, c_right=0, c_bottom=0, font_choice="Cairo (عربي عريض فاخر)", remove_logo_bg=True, smart_logo_position=False):
     
     img = Image.open(image_path).convert("RGBA")
     
@@ -203,7 +240,7 @@ def process_image_template(image_path, blur_background=True, blur_intensity=12, 
             
             fg = img.copy()
             fg.thumbnail((int(w * 0.9), int(h * 0.9)), Image.Resampling.LANCZOS)
-            offset = ((w - fg.size[0]) // 2, (th - fg.size[1]) // 2)
+            offset = ((w - fg.size[0]) // 2, (h - fg.size[1]) // 2)
             bg.paste(fg, offset, fg)
             img = bg
         else:
@@ -228,20 +265,21 @@ def process_image_template(image_path, blur_background=True, blur_intensity=12, 
             a = a.point(lambda p: int(p * opacity_val))
             logo_transparent = Image.merge("RGBA", (r, g, b, a))
             
-            lx, ly = calculate_exact_position(w, h, logo.size[0], logo.size[1], logo_pos_mode, logo_off_x, logo_off_y)
+            effective_logo_pos = choose_smart_logo_position(img, logo.size) if smart_logo_position else logo_pos_mode
+            lx, ly = calculate_exact_position(w, h, logo.size[0], logo.size[1], effective_logo_pos, logo_off_x, logo_off_y)
             img.paste(logo_transparent, (lx, ly), logo_transparent)
         except Exception:
             pass
 
     base_brand_text = os.getenv("dynamic_brand_text", "Montgk Brand")
     calc_b_size = max(14, int(h * brand_text_scale))
-    b_font = get_selected_font(font_choice, calc_b_size)
+    b_font = get_selected_font(font_choice, calc_b_size, base_brand_text)
     if b_font:
         draw_single_custom_text(img, base_brand_text, b_font, hex_to_rgb(brand_color) + (255,), brand_pos, brand_off_x, brand_off_y)
 
     if extra_text.strip():
         calc_e_size = max(12, int(h * extra_text_scale))
-        e_font = get_selected_font(font_choice, calc_e_size)
+        e_font = get_selected_font(font_choice, calc_e_size, extra_text)
         if e_font:
             draw_single_custom_text(img, extra_text, e_font, hex_to_rgb(extra_color) + (255,), extra_pos, extra_off_x, extra_off_y)
 
@@ -309,11 +347,61 @@ def generate_smart_ai_description(raw_text):
         f"جودة عالية، تشطيب راقي، وتصميم يناسب كل احتياجاتك. جبناهالك بأقل سعر في السوق عشان تكسح منافسيك! 😉👑"
     )
 
-def generate_auto_hashtags(product_name):
-    clean_name = re.sub(r'[^\w\s]', '', product_name).strip().replace(" ", "_")
-    base_tags = ["#عروض_مصر", "#تسوق_اونلاين", "#تخفيضات", "#منتجات_تريند", "#توصيل_سريع"]
-    if clean_name: base_tags.insert(0, f"#{clean_name}")
-    return " ".join(base_tags)
+def get_trending_hashtags(limit=8):
+    """Read current Egypt Google Trends titles; keep a safe fallback if unavailable."""
+    fallback = ["#عروض_مصر", "#ترند", "#تسوق_اونلاين", "#منتجات_تريند", "#خصومات"]
+    try:
+        response = requests.get("https://trends.google.com/trending/rss?geo=EG", timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+        response.raise_for_status()
+        root = ET.fromstring(response.content)
+        titles = []
+        for item in root.findall(".//item"):
+            title = (item.findtext("title") or "").strip()
+            if title:
+                tag = "#" + re.sub(r"[^\w\u0600-\u06FF]+", "_", title).strip("_")
+                if len(tag) > 1 and tag not in titles:
+                    titles.append(tag)
+            if len(titles) >= limit:
+                break
+        return titles[:limit] or fallback
+    except (requests.RequestException, ET.ParseError, ValueError):
+        return fallback
+
+
+def generate_auto_hashtags(product_name, extra_hashtags=None):
+    clean_name = re.sub(r"[^\w\u0600-\u06FF\s]", "", product_name or "").strip().replace(" ", "_")
+    base_tags = list(extra_hashtags or ["#عروض_مصر", "#تسوق_اونلاين", "#تخفيضات", "#منتجات_تريند", "#توصيل_سريع"])
+    if clean_name:
+        base_tags.insert(0, f"#{clean_name}")
+    return " ".join(dict.fromkeys(base_tags))
+
+
+def generate_product_ad(image_bytes, manual_template="", extra_details="", hashtags=None):
+    """Generate Arabic product copy from an image when a vision key is configured.
+
+    Without a key, return a useful template-based ad instead of failing the app.
+    """
+    tags = generate_auto_hashtags(extra_details or "منتج", hashtags)
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    if api_key and image_bytes:
+        try:
+            encoded = base64.b64encode(image_bytes).decode("ascii")
+            base_url = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1").rstrip("/")
+            prompt = ("اكتب إعلانًا مصريًا جذابًا بالعربية لهذا المنتج. اقرأ تفاصيل الصورة بدون اختراع مواصفات غير واضحة. "
+                      "استخدم القالب اليدوي إن وُجد، واجعل النص مناسبًا لمنشور بيع قصير مع عنوان وفوائد ودعوة للشراء. "
+                      f"تفاصيل يدوية: {extra_details or 'لا توجد'}\nالقالب اليدوي: {manual_template or 'اكتب بأسلوبك'}")
+            payload = {"model": os.getenv("OPENAI_VISION_MODEL", "gpt-4o-mini"), "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{encoded}"}}]}], "max_tokens": 500}
+            response = requests.post(f"{base_url}/chat/completions", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json=payload, timeout=45)
+            response.raise_for_status()
+            text = response.json()["choices"][0]["message"]["content"].strip()
+            return f"{text}\n\n{tags}", True
+        except (requests.RequestException, KeyError, TypeError, ValueError):
+            pass
+    title = extra_details.strip() or "منتج مميز"
+    template = manual_template.strip() or "🔥 {المنتج}\n\nجودة ممتازة وشكل عملي يناسب استخدامك اليومي.\nللطلب والاستفسار تواصل معنا الآن."
+    text = template.replace("{المنتج}", title)
+    return f"{text}\n\n{tags}\n\nMr :- Bo0", False
+
 
 def supplier_code(channel_name):
     """Create a short code from the channel name for the final post."""
