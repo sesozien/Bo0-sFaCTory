@@ -5,6 +5,7 @@ Feature implementations live in tabs.py; reusable logic lives in utils.py.
 """
 import json
 import os
+import shutil
 
 import streamlit as st
 from PIL import Image
@@ -40,6 +41,12 @@ DEFAULT_WIDGETS = {
 
 def initialize_files():
     os.makedirs(config.TMP_DIR, exist_ok=True)
+    # logo.png بجوار ملفات المشروع هو المصدر الأساسي للوجو عند النشر.
+    # لا نلغي لوجو رفعه المستخدم إلا إذا كانت نسخة logo.png أحدث منه.
+    if utils.ensure_valid_image(config.PROJECT_LOGO_PATH):
+        if (not utils.ensure_valid_image(config.ACTIVE_LOGO_PATH)
+                or os.path.getmtime(config.PROJECT_LOGO_PATH) > os.path.getmtime(config.ACTIVE_LOGO_PATH)):
+            shutil.copyfile(config.PROJECT_LOGO_PATH, config.ACTIVE_LOGO_PATH)
     if not utils.ensure_valid_image(config.DEFAULT_LOGO_PATH):
         Image.new("RGBA", (200, 200), color=(255, 75, 75, 255)).save(config.DEFAULT_LOGO_PATH)
     if not utils.ensure_valid_image(config.ACTIVE_LOGO_PATH):

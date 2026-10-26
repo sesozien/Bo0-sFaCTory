@@ -10,6 +10,7 @@ DEVELOPER_SIGNATURE = "Developed with ⚡ by Mr:- Bo0"
 TMP_DIR = "tmp_files"
 os.makedirs(TMP_DIR, exist_ok=True)
 
+PROJECT_LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logo.png")
 DEFAULT_LOGO_PATH = "default_logo.png"
 ACTIVE_LOGO_PATH = "active_logo.png"
 CUSTOM_AUDIO_TRACK = "custom_track.mp3"
