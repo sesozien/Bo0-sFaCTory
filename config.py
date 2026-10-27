@@ -32,7 +32,8 @@ PERSISTED_SETTING_KEYS = {
     "q_val", "enable_crop", "c_l", "c_t", "c_r", "c_b", "audio_mode",
     "vid_option_main", "enable_trim_key", "t_start", "t_end", "sp_mode", "sp_factor",
     "t_dur_sec", "show_orig_tab2", "p_rate", "b_items", "fb_url", "max_p", "d_filt",
-    "r_mode", "sel_ch", "trend_cat",
+    "r_mode", "sel_ch", "trend_cat", "radar_profit", "radar_max_messages", "radar_max_price",
+    "radar_source_rule", "radar_rounding", "radar_review_required", "radar_auto_publish", "radar_publish_channel",
 }
 
 

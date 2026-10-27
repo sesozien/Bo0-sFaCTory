@@ -126,77 +126,105 @@ def render_tab_images(blur_bg_opt, blur_intensity_val, logo_opacity, fit_auto_lo
 
 
 def render_tab_radar(current_channels):
-    st.subheader("🛰️ مركز الفحص والـ Forward وإعادة التسعير الذكي ونشر تليجرام")
-    st.caption("اسحب من قناة، ثم اسحب قناة أخرى؛ عند تطابق المنتج سيظهر السعر الأرخص مع checkbox للموافقة قبل النشر.")
-    col1, col2 = st.columns(2)
-    with col1: price_inc_rate = st.number_input("نسبة زيادة السعر (%):", min_value=0, max_value=100, key="p_rate")
-    with col2: st.number_input("عدد القطع بالعلبة:", min_value=1, max_value=100, key="b_items")
-    fb_link = st.text_input("رابط صفحتك للتواصل:", key="fb_url")
-    max_price = st.number_input("الحد الأقصى للسعر:", min_value=1, max_value=9999999, key="max_p")
-    st.radio("النطاق الزمني:", ("اليوم فقط", "الأمس واليوم", "قبل أمس والـ 3 أيام الأخيرة", "كل البوستات المتاحة للقناة"), horizontal=True, key="d_filt")
-    radar_mode = st.radio("مصدر المحتوى:", ("🛰️ سحب رادار حي وفوري", "📋 إدخل يدوي لبوست معموله Forward"), key="r_mode")
-    if "cached_posts" not in st.session_state: st.session_state.cached_posts = []
-    if radar_mode == "🛰️ سحب رادار حي وفوري":
-        target_ch = st.selectbox("اختر القناة:", current_channels, key="sel_ch")
-        if st.button("🛰️ قنص المحتوى", key="btn_fetch"):
-            try:
-                res = requests.get(f"https://t.me/s/{target_ch}", headers={"User-Agent": "Mozilla/5.0"}, timeout=12)
-                soup = BeautifulSoup(res.content, "html.parser") if res.status_code == 200 else None
-                collected = []
-                for msg in reversed(soup.find_all("div", class_=lambda value: value and "tgme_widget_message_wrap" in value) if soup else []):
-                    text_div = msg.find("div", {"class": "tgme_widget_message_text"})
-                    if not text_div: continue
-                    photo_url = None
-                    photo_tag = msg.find("a", {"class": "tgme_widget_message_photo_wrap"})
-                    if photo_tag:
-                        match = re.search(r"url\(['\"]?(.*?)['\"]?\)", photo_tag.get("style", ""))
-                        if match: photo_url = "https:" + match.group(1) if match.group(1).startswith("//") else match.group(1)
-                    price, old = utils.extract_original_price_only(text_div.text.strip(), max_limit=max_price)
-                    collected.append({"text": text_div.text.strip(), "image": photo_url, "auto_price": price, "old_str": old})
-                price_index = st.session_state.setdefault("product_price_index", {})
-                st.session_state.cached_posts = utils.compare_products(collected, target_ch, price_index)
-                st.success(f"🎯 تم قنص وتحليل {len(collected)} بوست بذكاء!")
-            except Exception as exc: st.error(f"خطأ: {exc}")
-    else:
-        text = st.text_area("نص البوست:", key="fwd_t")
-        image = st.file_uploader("الصورة:", key="fwd_img")
-        if st.button("⚡ تحليل وتعديل فوراً", key="btn_man") and text:
-            price, old = utils.extract_original_price_only(text, max_limit=max_price)
-            price_index = st.session_state.setdefault("product_price_index", {})
-            st.session_state.cached_posts = utils.compare_products([{"text": text, "image": image, "auto_price": price, "old_str": old}], "manual", price_index)
-    for index, item in enumerate(st.session_state.cached_posts):
-        st.markdown(f"#### 📦 منتج رقم {index + 1}")
-        if item.get("image"): st.image(item["image"], width=250)
-        original = st.number_input(f"السعر الأصلي المكتشف {index + 1}:", min_value=0, value=int(item.get("auto_price") or 0), key=f"orig_p_{index}")
-        effective_price, code = int(original), item.get("source_code", utils.supplier_code(item.get("source_channel", "manual")))
-        comparison = item.get("comparison")
-        if comparison and comparison["type"] == "cheaper":
-            st.warning(f"🔎 نفس المنتج عند {comparison['channel']} بسعر أقل: {comparison['price']} جنيه — الكود {comparison['code']}")
-            if st.checkbox("اعتماد المورد الأرخص والسعر المقترح", key=f"approve_compare_{index}_{item.get('comparison_key', 'x')}"):
-                effective_price, code = int(comparison["price"]), comparison["code"]
-        elif comparison and comparison["type"] == "current_cheaper": st.success(f"✅ المنتج الحالي أرخص بسعر {comparison['price']} جنيه — الكود {code}")
-        elif comparison and comparison["type"] == "same_price": st.info("ℹ️ المنتج بنفس السعر موجود سابقًا؛ لا تعِد نشره إلا بعد تعديل الوصف أو السعر.")
-        new_price = int(effective_price * (1 + price_inc_rate / 100))
-        st.success(f"💵 المكسب المتوقع: **{new_price - effective_price} جنيه**")
-        smart = utils.generate_smart_ai_description(item["text"])
-        st.caption(smart)
-        use_smart = st.checkbox(f"🔄 اعتماد الوصف الذكي لمنتج {index + 1}؟", key=f"ai_chk_{index}")
-        if use_smart:
-            post = f"{smart}\n\n📌 سعر العرض الجديد: {new_price} ج\n🔖 كود المورد: {code}\n🔗 للتواصل: {fb_link}\n\n{utils.generate_auto_hashtags(item['text'][:15])}"
-        else:
-            clean = utils.clean_product_text(item["text"], item.get("source_channel"))
-            desc = clean.replace(item.get("old_str", ""), str(new_price), 1) if item.get("old_str") and item["old_str"] in clean else clean + f"\nالسعر: {new_price} ج"
-            post = f"{desc}\n\n📌 سعر العرض الجديد: {new_price} ج\n🔖 كود المورد: {code}\n🔗 للتواصل: {fb_link}"
-        content = st.text_area(f"البوست النهائي {index + 1}:", value=post, height=150, key=f"post_txt_{index}")
-        pub_col, button_col = st.columns([2, 1])
-        with pub_col: channel = st.text_input(f"قناة النشر #{index + 1}:", value=current_channels[0], key=f"p_ch_{index}")
-        with button_col:
-            st.write(""); st.write("")
-            if st.button(f"🚀 نشر #{index + 1}", key=f"btn_pub_{index}"):
-                ok, message = utils.send_telegram_post(config.TELEGRAM_BOT_TOKEN, channel, content, item["image"] if isinstance(item.get("image"), str) else None)
-                st.success(message) if ok else st.error(message)
-        st.markdown("---")
+    st.subheader("🛰️ رادار المنتجات اليدوي وكتالوج التصدير")
+    st.caption("لا توجد متابعة في الخلفية: اضغط تشغيل الرادار لسحب دفعة واحدة من القنوات العامة، ثم راجع المنتجات قبل الاعتماد.")
 
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        profit_percent = st.number_input("نسبة الربح (%)", min_value=0.0, max_value=300.0, value=35.0, step=1.0, key="radar_profit")
+    with col2:
+        max_messages = st.number_input("أقصى عدد رسائل", min_value=1, max_value=500, value=50, step=10, key="radar_max_messages")
+    with col3:
+        max_price = st.number_input("أقصى سعر أصلي (0 = بلا حد)", min_value=0, max_value=9999999, value=0, step=50, key="radar_max_price")
+
+    channels_text = st.text_area("القنوات العامة المراد فحصها", value="\n".join(current_channels), height=90, key="radar_channels_text", help="اكتب username كل قناة في سطر، مع أو بدون @")
+    source_rule = st.radio("ابدأ السحب من:", ("آخر الرسائل المتاحة", "من تاريخ", "بعد رسالة تحتوي على نص"), horizontal=True, key="radar_source_rule")
+    date_from = st.date_input("التاريخ من", value=__import__('datetime').date.today(), key="radar_date_from") if source_rule == "من تاريخ" else None
+    marker_text = st.text_input("نص علامة البداية", placeholder="مثال: ابدأ من هنا", key="radar_marker_text") if source_rule == "بعد رسالة تحتوي على نص" else ""
+    rounding = st.checkbox("تقريب السعر لأقرب 5 (2.5 أو أقل للأسفل، أكبر من 2.5 للأعلى)", value=True, key="radar_rounding")
+
+    st.markdown("### بعد مراجعة المنتجات")
+    review_required = st.checkbox("مراجعة يدوية لكل منتج قبل الاعتماد", value=True, key="radar_review_required")
+    auto_publish_enabled = st.checkbox("السماح بالنشر التلقائي بعد الضغط على زر النشر", value=False, key="radar_auto_publish")
+    publish_channel = st.text_input("قناة النشر الاختيارية", placeholder="@my_channel", key="radar_publish_channel")
+
+    if "radar_products" not in st.session_state:
+        st.session_state.radar_products = []
+
+    if st.button("🛰️ تشغيل الرادار الآن", type="primary", key="radar_scan_now"):
+        channels = [line.strip().lstrip('@') for line in channels_text.splitlines() if line.strip()]
+        if not channels:
+            st.error("أدخل قناة عامة واحدة على الأقل.")
+        else:
+            found = []
+            with st.spinner("جاري فحص القنوات العامة مرة واحدة..."):
+                try:
+                    for channel in channels:
+                        batch = utils.fetch_public_channel_messages(channel, date_from=date_from, marker_text=marker_text, max_messages=int(max_messages))
+                        for item in batch:
+                            if max_price and item.get('auto_price', 0) > max_price:
+                                continue
+                            found.append(utils.build_catalog_product(item, profit_percent, rounding))
+                    # Remove duplicates while preserving source order.
+                    unique = {}
+                    for product in found:
+                        unique[product['id']] = product
+                    st.session_state.radar_products = list(unique.values())
+                    st.success(f"تم العثور على {len(st.session_state.radar_products)} منتجًا. راجعها قبل التصدير أو النشر.")
+                except Exception as exc:
+                    st.error(f"تعذر فحص القنوات: {exc}")
+
+    products = st.session_state.get("radar_products", [])
+    if not products:
+        st.info("لم يتم تحميل منتجات بعد. اكتب القنوات وحدد البداية ثم اضغط تشغيل الرادار.")
+        return
+
+    st.markdown(f"### المنتجات المكتشفة ({len(products)})")
+    if st.button("✅ تحديد كل المنتجات للمراجعة", key="radar_approve_all"):
+        for idx in range(len(products)):
+            products[idx]['approved'] = True
+        st.rerun()
+
+    for index, product in enumerate(products):
+        with st.expander(f"📦 {index + 1}. {product.get('title', 'منتج جديد')} — {product.get('price', 0)} جنيه", expanded=index == 0):
+            if product.get('image_link'):
+                st.image(product['image_link'], width=220)
+            product['title'] = st.text_input("اسم المنتج", value=product.get('title', ''), key=f"radar_title_{index}")
+            product['description'] = st.text_area("الوصف والمقاسات والألوان والخامة", value=product.get('description', ''), height=120, key=f"radar_desc_{index}")
+            price_col, source_col = st.columns(2)
+            with price_col:
+                product['price'] = st.number_input("سعر البيع بعد الربح", min_value=0, value=int(product.get('price') or 0), step=5, key=f"radar_price_{index}")
+                st.caption(f"السعر الأصلي: {product.get('original_price', 0)} جنيه — ربح {product.get('profit_percent', 0):g}%")
+            with source_col:
+                st.caption(f"المصدر: @{product.get('source_channel', '')}")
+                st.caption(f"التاريخ: {product.get('source_date', '') or 'غير متاح'}")
+            if review_required:
+                product['approved'] = st.checkbox("أوافق على اعتماد هذا المنتج", value=bool(product.get('approved')), key=f"radar_approved_{index}")
+            else:
+                product['approved'] = True
+
+    approved = [product for product in products if product.get('approved')]
+    st.divider()
+    st.markdown(f"### المعتمد للتصدير: {len(approved)}")
+    if approved:
+        csv_bytes = utils.make_catalog_csv(approved)
+        st.download_button("⬇️ تنزيل CSV لكتالوج Meta", data=csv_bytes, file_name="catalog_meta.csv", mime="text/csv", key="download_catalog_csv")
+        st.download_button("⬇️ تنزيل ZIP بالكتالوج والصور", data=utils.make_catalog_zip(approved), file_name="catalog_products.zip", mime="application/zip", key="download_catalog_zip")
+        if publish_channel:
+            if not auto_publish_enabled:
+                st.warning("فعّل خيار السماح بالنشر التلقائي إذا أردت زر النشر أن يرسل إلى القناة.")
+            if st.button("🚀 نشر المنتجات المعتمدة على تيليجرام", key="radar_publish_approved"):
+                if not auto_publish_enabled:
+                    st.error("النشر متوقف للحماية. فعّل السماح بالنشر التلقائي أولًا.")
+                else:
+                    sent = 0
+                    for product in approved:
+                        text = f"{product['title']}\n\n{product['description']}\n\n💵 السعر: {product['price']} ج\n\nMr :- Bo0"
+                        ok, _message = utils.send_telegram_post(config.TELEGRAM_BOT_TOKEN, publish_channel, text, product.get('image_link'))
+                        sent += int(ok)
+                    st.success(f"تم إرسال {sent} من {len(approved)} منتجًا إلى {publish_channel}.")
+    else:
+        st.info("حدد المنتجات التي تريد اعتمادها يدويًا، ثم سيظهر التصدير والنشر هنا.")
 
 def render_tab_trends():
     st.subheader("🔍 رادار المنتجات الأكثر بحثاً في مصر")

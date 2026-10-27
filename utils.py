@@ -335,6 +335,175 @@ def extract_original_price_only(text, max_limit=None):
         if val < 50000: return val, num_str
     return 0, ""
 
+
+def round_price_to_five(value):
+    """Round to the nearest 5; a remainder up to 2.5 rounds down."""
+    value = float(value or 0)
+    if value <= 0:
+        return 0
+    lower = int(value // 5) * 5
+    remainder = value - lower
+    return lower if remainder <= 2.5 else lower + 5
+
+
+def apply_profit_margin(original_price, profit_percent=35, rounding=True):
+    price = float(original_price or 0) * (1 + float(profit_percent or 0) / 100)
+    return int(round_price_to_five(price) if rounding else round(price))
+
+
+def _telegram_photo_url(message):
+    photo_tag = message.find('a', {'class': 'tgme_widget_message_photo_wrap'})
+    if not photo_tag:
+        return None
+    style = photo_tag.get('style', '')
+    match = re.search(r"url\\(['\"]?(.*?)['\"]?\\)", style)
+    if not match:
+        return None
+    url = match.group(1)
+    return 'https:' + url if url.startswith('//') else url
+
+
+def fetch_public_channel_messages(channel, date_from=None, marker_text='', max_messages=100, max_pages=5):
+    """Fetch a bounded batch from a public t.me channel only when the user clicks scan."""
+    channel = str(channel or '').strip().lstrip('@').split('/')[-1]
+    if not channel:
+        return []
+    collected = []
+    before = None
+    marker = (marker_text or '').casefold().strip()
+    for _ in range(max_pages):
+        url = f'https://t.me/s/{channel}' + (f'?before={before}' if before else '')
+        response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=20)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.content, 'html.parser') if 'BeautifulSoup' in globals() else None
+        if soup is None:
+            from bs4 import BeautifulSoup as _Soup
+            soup = _Soup(response.content, 'html.parser')
+        wraps = soup.find_all('div', class_=lambda value: value and 'tgme_widget_message_wrap' in value)
+        if not wraps:
+            break
+        page_ids = []
+        stop = False
+        for wrap in wraps:
+            message = wrap.find('div', class_=lambda value: value and 'tgme_widget_message' in value)
+            text_div = wrap.find('div', {'class': 'tgme_widget_message_text'})
+            text = text_div.get_text(' ', strip=True) if text_div else ''
+            date_tag = wrap.find('time')
+            date_value = date_tag.get('datetime', '') if date_tag else ''
+            link_tag = wrap.find('a', {'class': 'tgme_widget_message_date'})
+            source_url = link_tag.get('href', '') if link_tag else ''
+            message_id = ''
+            data_post = message.get('data-post', '') if message else ''
+            if data_post:
+                message_id = data_post.rsplit('/', 1)[-1]
+            if message_id:
+                page_ids.append(int(message_id) if message_id.isdigit() else message_id)
+            if date_from and date_value and date_value[:10] < str(date_from):
+                stop = True
+                continue
+            if marker and marker in text.casefold():
+                stop = True
+                continue
+            if not text and not _telegram_photo_url(wrap):
+                continue
+            price, old_str = extract_original_price_only(text)
+            collected.append({
+                'text': text,
+                'image': _telegram_photo_url(wrap),
+                'source_url': source_url,
+                'message_id': message_id,
+                'date': date_value,
+                'auto_price': price,
+                'old_str': old_str,
+                'source_channel': channel,
+            })
+            if len(collected) >= int(max_messages):
+                break
+        if len(collected) >= int(max_messages) or stop or not page_ids:
+            break
+        before = min(page_ids)
+    collected.sort(key=lambda item: item.get('date', ''))
+    return collected[:int(max_messages)]
+
+
+def extract_product_attributes(text):
+    """Best-effort extraction; the user can edit every field before export."""
+    text = text or ''
+    sizes = re.findall(r'(?i)\\b(?:XS|S|M|L|XL|XXL|XXXL|3XL|4XL)\\b', text)
+    colors = []
+    color_words = ['اسود', 'أبيض', 'ابيض', 'رمادي', 'بيج', 'احمر', 'أحمر', 'نبيتي', 'روز', 'فوشيا', 'مينت', 'بيبي بلو', 'اخضر', 'أخضر', 'اورانج', 'برتقالي', 'كاشمير', 'هافان', 'تفاحي', 'اصفر', 'أصفر', 'زيتي', 'كحلي', 'لافندر', 'بني', 'اسود/ابيض']
+    low = text.casefold()
+    for color in color_words:
+        if color.casefold() in low and color not in colors:
+            colors.append(color)
+    material_match = re.search(r'(?:خامة|خامه|قماش|نوع القماش)\\s*[:：-]?\\s*([^\\n،,]+)', text, re.IGNORECASE)
+    material = material_match.group(1).strip() if material_match else ''
+    title_line = next((line.strip() for line in text.splitlines() if line.strip()), 'منتج جديد')
+    title_line = re.sub(r'https?://\\S+|#\\S+|@[\\w_]+', '', title_line).strip()
+    return {'title': title_line[:120] or 'منتج جديد', 'sizes': '، '.join(dict.fromkeys(sizes)), 'colors': '، '.join(colors), 'material': material}
+
+
+def build_catalog_product(item, profit_percent=35, rounding=True, brand='Bo0'):
+    original = float(item.get('auto_price') or 0)
+    attrs = extract_product_attributes(item.get('text', ''))
+    final_price = apply_profit_margin(original, profit_percent, rounding) if original else 0
+    description_parts = [part for part in [
+        f"المقاسات: {attrs['sizes']}" if attrs['sizes'] else '',
+        f"الألوان: {attrs['colors']}" if attrs['colors'] else '',
+        f"الخامة: {attrs['material']}" if attrs['material'] else '',
+        clean_product_text(item.get('text', ''), item.get('source_channel')),
+    ] if part]
+    return {
+        'id': product_identity(item.get('text', ''), item.get('image')),
+        'title': attrs['title'],
+        'description': '\n'.join(description_parts),
+        'availability': 'in stock',
+        'condition': 'new',
+        'price': final_price,
+        'currency': 'EGP',
+        'original_price': int(original),
+        'profit_percent': float(profit_percent),
+        'image_link': item.get('image', ''),
+        'link': item.get('source_url', ''),
+        'brand': brand,
+        'source_channel': item.get('source_channel', ''),
+        'source_date': item.get('date', ''),
+        'approved': False,
+        'source_text': item.get('text', ''),
+    }
+
+
+def make_catalog_csv(products):
+    import csv
+    import io
+    fields = ['id', 'title', 'description', 'availability', 'condition', 'price', 'currency', 'image_link', 'link', 'brand']
+    out = io.StringIO()
+    writer = csv.DictWriter(out, fieldnames=fields, extrasaction='ignore')
+    writer.writeheader()
+    writer.writerows(products)
+    return out.getvalue().encode('utf-8-sig')
+
+
+def make_catalog_zip(products):
+    import io
+    import zipfile
+    from pathlib import Path
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr('catalog.csv', make_catalog_csv(products))
+        zf.writestr('catalog.json', __import__('json').dumps(products, ensure_ascii=False, indent=2))
+        for index, product in enumerate(products, start=1):
+            image_url = product.get('image_link')
+            if not image_url:
+                continue
+            try:
+                response = requests.get(image_url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=20)
+                response.raise_for_status()
+                zf.writestr(f'images/{product["id"]}_{index}.jpg', response.content)
+            except requests.RequestException:
+                continue
+    return archive.getvalue()
+
 def generate_smart_ai_description(raw_text):
     clean = re.sub(r'http[s]?://\S+|www\.\S+', '', raw_text)
     clean = re.sub(r'#\w+', '', clean)
