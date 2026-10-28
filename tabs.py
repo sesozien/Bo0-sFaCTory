@@ -142,6 +142,8 @@ def render_tab_radar(current_channels):
     source_rule = st.radio("ابدأ السحب من:", ("آخر الرسائل المتاحة", "من تاريخ", "بعد رسالة تحتوي على نص"), horizontal=True, key="radar_source_rule")
     date_from = st.date_input("التاريخ من", value=__import__('datetime').date.today(), key="radar_date_from") if source_rule == "من تاريخ" else None
     marker_text = st.text_input("نص علامة البداية", placeholder="مثال: ابدأ من هنا", key="radar_marker_text") if source_rule == "بعد رسالة تحتوي على نص" else ""
+    allowed_forwarders_text = st.text_area("أسماء المصادر/المعلنين المسموح بهم (اختياري)", height=70, key="radar_allowed_forwarders", help="اكتب اسم المعلن كما يظهر في تيليجرام، كل اسم في سطر. اتركه فارغًا لاستبعاد أي منشور Forward.")
+    exclude_forwarded = st.checkbox("استبعاد أي منشور منقول من معلن غير موجود بالقائمة", value=True, key="radar_exclude_forwarded")
     rounding = st.checkbox("تقريب السعر لأقرب 5 (2.5 أو أقل للأسفل، أكبر من 2.5 للأعلى)", value=True, key="radar_rounding")
 
     st.markdown("### بعد مراجعة المنتجات")
@@ -173,7 +175,8 @@ def render_tab_radar(current_channels):
             with st.spinner("جاري فحص القنوات العامة مرة واحدة..."):
                 try:
                     for channel in channels:
-                        batch = utils.fetch_public_channel_messages(channel, date_from=date_from, marker_text=marker_text, max_messages=int(max_messages))
+                        allowed_forwarders = [line.strip() for line in allowed_forwarders_text.splitlines() if line.strip()]
+                        batch = utils.fetch_public_channel_messages(channel, date_from=date_from, marker_text=marker_text, max_messages=int(max_messages), allowed_forwarders=allowed_forwarders, exclude_forwarded=exclude_forwarded)
                         for item in batch:
                             if max_price and item.get('auto_price', 0) > max_price:
                                 continue

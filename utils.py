@@ -410,7 +410,12 @@ def _make_remote_collage(urls, identity):
         return local_paths[0] if local_paths else (urls[0] if urls else '')
     return create_image_collage(local_paths, target_size=(1080, 1080), output_name=f'album_{identity}_collage.jpg')
 
-def fetch_public_channel_messages(channel, date_from=None, marker_text='', max_messages=100, max_pages=5):
+def _has_explicit_price(text):
+    text = text or ''
+    return bool(re.search(r'(?:السعر|سعر|price|جنيه|جنية|EGP|LE|ج\b)\s*[:：=\-]?\s*\d+|\d+\s*(?:جنيه|جنية|ج\b|EGP|LE)', text, re.IGNORECASE))
+
+
+def fetch_public_channel_messages(channel, date_from=None, marker_text='', max_messages=100, max_pages=5, allowed_forwarders=None, exclude_forwarded=True):
     """Fetch a bounded batch from a public t.me channel only when the user clicks scan."""
     channel = str(channel or '').strip().lstrip('@').split('/')[-1]
     if not channel:
@@ -418,6 +423,7 @@ def fetch_public_channel_messages(channel, date_from=None, marker_text='', max_m
     collected = []
     before = None
     marker = (marker_text or '').casefold().strip()
+    allowed = {str(name).strip().casefold() for name in (allowed_forwarders or []) if str(name).strip()}
     for _ in range(max_pages):
         url = f'https://t.me/s/{channel}' + (f'?before={before}' if before else '')
         response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=20)
@@ -435,6 +441,10 @@ def fetch_public_channel_messages(channel, date_from=None, marker_text='', max_m
             message = wrap.find('div', class_=lambda value: value and 'tgme_widget_message' in value)
             text_div = wrap.find('div', {'class': 'tgme_widget_message_text'})
             text = text_div.get_text(' ', strip=True) if text_div else ''
+            forwarded_block = wrap.select_one('.tgme_widget_message_forwarded_from')
+            forwarded_tag = wrap.select_one('.tgme_widget_message_forwarded_from_name')
+            forwarded_name = forwarded_tag.get_text(' ', strip=True) if forwarded_tag else ''
+            is_forwarded = forwarded_block is not None
             date_tag = wrap.find('time')
             date_value = date_tag.get('datetime', '') if date_tag else ''
             link_tag = wrap.find('a', {'class': 'tgme_widget_message_date'})
@@ -454,6 +464,12 @@ def fetch_public_channel_messages(channel, date_from=None, marker_text='', max_m
             photo_urls = _telegram_photo_urls(wrap)
             if not text and not photo_urls:
                 continue
+            # Only accept real product posts: an image and an explicit price.
+            # Forwarded advertising is accepted only when its source name is allowed.
+            if not photo_urls or not _has_explicit_price(text):
+                continue
+            if exclude_forwarded and is_forwarded and not (forwarded_name and any(name in forwarded_name.casefold() for name in allowed)):
+                continue
             price, old_str = extract_original_price_only(text)
             collected.append({
                 'text': text,
@@ -465,6 +481,7 @@ def fetch_public_channel_messages(channel, date_from=None, marker_text='', max_m
                 'auto_price': price,
                 'old_str': old_str,
                 'source_channel': channel,
+                'forwarded_from': forwarded_name,
             })
             if len(collected) >= int(max_messages):
                 break
