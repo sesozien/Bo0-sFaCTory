@@ -170,6 +170,8 @@ def render_tab_radar(current_channels):
                     for product in found:
                         unique[product['id']] = product
                     st.session_state.radar_products = list(unique.values())
+                    for idx in range(len(st.session_state.radar_products)):
+                        st.session_state[f'radar_approved_{idx}'] = False
                     st.success(f"تم العثور على {len(st.session_state.radar_products)} منتجًا. راجعها قبل التصدير أو النشر.")
                 except Exception as exc:
                     st.error(f"تعذر فحص القنوات: {exc}")
@@ -183,6 +185,7 @@ def render_tab_radar(current_channels):
     if st.button("✅ تحديد كل المنتجات للمراجعة", key="radar_approve_all"):
         for idx in range(len(products)):
             products[idx]['approved'] = True
+            st.session_state[f'radar_approved_{idx}'] = True
         st.rerun()
 
     for index, product in enumerate(products):
@@ -194,12 +197,15 @@ def render_tab_radar(current_channels):
             price_col, source_col = st.columns(2)
             with price_col:
                 product['price'] = st.number_input("سعر البيع بعد الربح", min_value=0, value=int(product.get('price') or 0), step=5, key=f"radar_price_{index}")
-                st.caption(f"السعر الأصلي: {product.get('original_price', 0)} جنيه — ربح {product.get('profit_percent', 0):g}%")
+                st.caption(f"تم حساب سعر البيع حسب نسبة الربح المحددة: {product.get('profit_percent', 0):g}%")
             with source_col:
                 st.caption(f"المصدر: @{product.get('source_channel', '')}")
                 st.caption(f"التاريخ: {product.get('source_date', '') or 'غير متاح'}")
             if review_required:
-                product['approved'] = st.checkbox("أوافق على اعتماد هذا المنتج", value=bool(product.get('approved')), key=f"radar_approved_{index}")
+                approval_key = f'radar_approved_{index}'
+                if approval_key not in st.session_state:
+                    st.session_state[approval_key] = bool(product.get('approved', False))
+                product['approved'] = st.checkbox("أوافق على اعتماد هذا المنتج", key=approval_key)
             else:
                 product['approved'] = True
 

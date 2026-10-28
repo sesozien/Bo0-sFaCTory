@@ -287,7 +287,7 @@ def process_image_template(image_path, blur_background=True, blur_intensity=12, 
     img.convert("RGB").save(out_img_path, "JPEG", quality=int(quality_val))
     return out_img_path
 
-def create_image_collage(image_paths, target_size=(1080, 1080)):
+def create_image_collage(image_paths, target_size=(1080, 1080), output_name='montgk_collage_output.jpg'):
     num_images = len(image_paths)
     collage_img = Image.new('RGB', target_size, color=(255, 255, 255))
     
@@ -308,7 +308,7 @@ def create_image_collage(image_paths, target_size=(1080, 1080)):
         y_offset = r_idx * cell_h + (cell_h - im.size[1]) // 2
         collage_img.paste(im, (x_offset, y_offset))
         
-    out_collage_path = os.path.join(config.TMP_DIR, "montgk_collage_output.jpg")
+    out_collage_path = os.path.join(config.TMP_DIR, output_name)
     collage_img.save(out_collage_path, "JPEG", quality=95)
     return out_collage_path
 
@@ -351,17 +351,59 @@ def apply_profit_margin(original_price, profit_percent=35, rounding=True):
     return int(round_price_to_five(price) if rounding else round(price))
 
 
-def _telegram_photo_url(message):
-    photo_tag = message.find('a', {'class': 'tgme_widget_message_photo_wrap'})
-    if not photo_tag:
-        return None
-    style = photo_tag.get('style', '')
-    match = re.search(r"url\\(['\"]?(.*?)['\"]?\\)", style)
-    if not match:
-        return None
-    url = match.group(1)
-    return 'https:' + url if url.startswith('//') else url
+def _telegram_photo_urls(message):
+    """Return every photo URL attached to one public Telegram message/album."""
+    urls = []
+    for photo_tag in message.find_all('a', {'class': 'tgme_widget_message_photo_wrap'}):
+        style = photo_tag.get('style', '')
+        match = re.search(r"url\(['\"]?(.*?)['\"]?\)", style)
+        if not match:
+            continue
+        url = match.group(1)
+        url = 'https:' + url if url.startswith('//') else url
+        if url not in urls:
+            urls.append(url)
+    return urls
 
+
+def _telegram_photo_url(message):
+    urls = _telegram_photo_urls(message)
+    return urls[0] if urls else None
+
+
+def _strip_price_mentions(text):
+    """Remove supplier prices so no original price leaks into title or description."""
+    text = text or ''
+    patterns = [
+        r'(?:السعر|سعر|price)\s*[:：=\-]?\s*\d+(?:\s*[-–]\s*\d+)?\s*(?:جنيه|جنية|ج)?',
+        r'\d+(?:\s*[-–]\s*\d+)?\s*(?:جنيه|جنية|ج)\b',
+    ]
+    for pattern in patterns:
+        text = re.sub(pattern, ' ', text, flags=re.IGNORECASE)
+    return re.sub(r'\s*[,،;؛|—–-]\s*', ' ', text)
+
+
+def _make_remote_collage(urls, identity):
+    """Download album images once and create one local collage for preview/export."""
+    local_paths = []
+    for index, url in enumerate(urls[:9]):
+        try:
+            if os.path.exists(str(url)):
+                path = str(url)
+            else:
+                response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=20)
+                response.raise_for_status()
+                path = os.path.join(config.TMP_DIR, f'album_{identity}_{index}.jpg')
+                with open(path, 'wb') as stream:
+                    stream.write(response.content)
+            with Image.open(path) as image:
+                image.verify()
+            local_paths.append(path)
+        except (requests.RequestException, OSError, ValueError):
+            continue
+    if len(local_paths) < 2:
+        return local_paths[0] if local_paths else (urls[0] if urls else '')
+    return create_image_collage(local_paths, target_size=(1080, 1080), output_name=f'album_{identity}_collage.jpg')
 
 def fetch_public_channel_messages(channel, date_from=None, marker_text='', max_messages=100, max_pages=5):
     """Fetch a bounded batch from a public t.me channel only when the user clicks scan."""
@@ -404,12 +446,14 @@ def fetch_public_channel_messages(channel, date_from=None, marker_text='', max_m
             if marker and marker in text.casefold():
                 stop = True
                 continue
-            if not text and not _telegram_photo_url(wrap):
+            photo_urls = _telegram_photo_urls(wrap)
+            if not text and not photo_urls:
                 continue
             price, old_str = extract_original_price_only(text)
             collected.append({
                 'text': text,
-                'image': _telegram_photo_url(wrap),
+                'image': photo_urls[0] if photo_urls else None,
+                'images': photo_urls,
                 'source_url': source_url,
                 'message_id': message_id,
                 'date': date_value,
@@ -440,21 +484,25 @@ def extract_product_attributes(text):
     material = material_match.group(1).strip() if material_match else ''
     title_line = next((line.strip() for line in text.splitlines() if line.strip()), 'منتج جديد')
     title_line = re.sub(r'https?://\\S+|#\\S+|@[\\w_]+', '', title_line).strip()
+    title_line = _strip_price_mentions(title_line).strip()
     return {'title': title_line[:120] or 'منتج جديد', 'sizes': '، '.join(dict.fromkeys(sizes)), 'colors': '، '.join(colors), 'material': material}
 
 
 def build_catalog_product(item, profit_percent=35, rounding=True, brand='Bo0'):
     original = float(item.get('auto_price') or 0)
     attrs = extract_product_attributes(item.get('text', ''))
+    image_sources = item.get('images') or ([item.get('image')] if item.get('image') else [])
+    product_id = product_identity(item.get('text', ''), '|'.join(image_sources))
+    image_value = _make_remote_collage(image_sources, product_id) if len(image_sources) > 1 else (image_sources[0] if image_sources else '')
     final_price = apply_profit_margin(original, profit_percent, rounding) if original else 0
     description_parts = [part for part in [
         f"المقاسات: {attrs['sizes']}" if attrs['sizes'] else '',
         f"الألوان: {attrs['colors']}" if attrs['colors'] else '',
         f"الخامة: {attrs['material']}" if attrs['material'] else '',
-        clean_product_text(item.get('text', ''), item.get('source_channel')),
+        clean_product_text(_strip_price_mentions(item.get('text', '')), item.get('source_channel')),
     ] if part]
     return {
-        'id': product_identity(item.get('text', ''), item.get('image')),
+        'id': product_id,
         'title': attrs['title'],
         'description': '\n'.join(description_parts),
         'availability': 'in stock',
@@ -463,7 +511,7 @@ def build_catalog_product(item, profit_percent=35, rounding=True, brand='Bo0'):
         'currency': 'EGP',
         'original_price': int(original),
         'profit_percent': float(profit_percent),
-        'image_link': item.get('image', ''),
+        'image_link': image_value,
         'link': item.get('source_url', ''),
         'brand': brand,
         'source_channel': item.get('source_channel', ''),
@@ -497,10 +545,14 @@ def make_catalog_zip(products):
             if not image_url:
                 continue
             try:
-                response = requests.get(image_url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=20)
-                response.raise_for_status()
-                zf.writestr(f'images/{product["id"]}_{index}.jpg', response.content)
-            except requests.RequestException:
+                if os.path.exists(str(image_url)):
+                    with open(image_url, 'rb') as stream:
+                        zf.writestr(f'images/{product["id"]}_{index}.jpg', stream.read())
+                else:
+                    response = requests.get(image_url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=20)
+                    response.raise_for_status()
+                    zf.writestr(f'images/{product["id"]}_{index}.jpg', response.content)
+            except (requests.RequestException, OSError):
                 continue
     return archive.getvalue()
 
