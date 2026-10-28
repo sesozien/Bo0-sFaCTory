@@ -1,3 +1,5 @@
+import csv
+import io
 import os
 import re
 import requests
@@ -71,12 +73,90 @@ def render_tab_video(chosen_size, logo_position_choice, logo_offset_x, logo_offs
         except Exception as exc: st.error(f"خطأ: {exc}")
 
 
+def _catalog_categories():
+    defaults = ["توك", "اكسسوار", "أدوات منزلية", "رفايع مطبخ", "مكياجات", "خردوات", "أدوات مدرسية", "بلاستيكات"]
+    if "catalog_custom_categories" not in st.session_state:
+        st.session_state.catalog_custom_categories = config.load_categories()
+    custom = st.session_state.get("catalog_custom_categories", [])
+    return list(dict.fromkeys(defaults + custom))
+
+
+def render_catalog_panel(processed_images=None):
+    st.markdown("## 🗂️ كتالوج المنتجات")
+    st.caption("أضف الصور بعد تعديلها، ثم املأ بيانات المنتج. سعر القطعة يُحسب تلقائيًا من سعر الدستة ÷ عدد العبوات.")
+    with st.sidebar.expander("➕ إضافة تصنيف جديد", expanded=False):
+        new_category = st.text_input("اسم التصنيف", key="catalog_new_category")
+        if st.button("إضافة التصنيف", key="catalog_add_category"):
+            clean = new_category.strip()
+            if clean and clean not in _catalog_categories():
+                st.session_state.setdefault("catalog_custom_categories", []).append(clean)
+                config.save_categories(st.session_state.catalog_custom_categories)
+                st.success("تمت إضافة التصنيف")
+                st.rerun()
+    categories = _catalog_categories()
+    if "catalog_rows" not in st.session_state:
+        st.session_state.catalog_rows = config.load_catalog()
+    if processed_images:
+        existing = {str(row.get("image_path")) for row in st.session_state.catalog_rows}
+        for image_path in processed_images:
+            if str(image_path) not in existing:
+                st.session_state.catalog_rows.append({"approved": False, "image_path": str(image_path), "name": "", "type": categories[0], "case_price": 0.0, "pack_count": 1, "unit_price": 0.0, "notes": ""})
+                existing.add(str(image_path))
+    rows = st.session_state.catalog_rows
+    if not rows:
+        st.info("بعد معالجة الصور ستظهر النسخ المعدلة هنا كصفوف.")
+        return
+    table_rows = []
+    for row in rows:
+        count = max(1, int(row.get("pack_count") or 1))
+        case_price = float(row.get("case_price") or 0)
+        table_rows.append({"اعتماد": bool(row.get("approved", False)), "الصورة المعدلة": row.get("image_path", ""), "اسم المنتج": row.get("name", ""), "النوع": row.get("type", categories[0]), "سعر الدستة": case_price, "عدد العبوة": count, "سعر القطعة": round(case_price / count, 2), "الملاحظات": row.get("notes", "")})
+    edited = st.data_editor(table_rows, key="catalog_editor", num_rows="dynamic", hide_index=True, use_container_width=True, column_config={
+        "اعتماد": st.column_config.CheckboxColumn("اعتماد", help="حدد الصف ليظهر في التصدير", default=False),
+        "الصورة المعدلة": st.column_config.TextColumn("الصورة المعدلة", disabled=True),
+        "اسم المنتج": st.column_config.TextColumn("اسم المنتج"),
+        "النوع": st.column_config.SelectboxColumn("النوع", options=categories),
+        "سعر الدستة": st.column_config.NumberColumn("سعر الدستة", min_value=0, step=1),
+        "عدد العبوة": st.column_config.NumberColumn("عدد العبوة", min_value=1, step=1),
+        "سعر القطعة": st.column_config.NumberColumn("سعر القطعة", disabled=True, format="%.2f"),
+        "الملاحظات": st.column_config.TextColumn("الملاحظات"),
+    }, disabled=["الصورة المعدلة", "سعر القطعة"])
+    edited_records = edited.to_dict("records") if hasattr(edited, "to_dict") else list(edited)
+    for idx, source in enumerate(edited_records):
+        if idx < len(rows):
+            rows[idx]["approved"] = bool(source.get("اعتماد", False))
+
+    if st.button("💾 حفظ تعديلات الكتالوج", type="primary", key="catalog_save"):
+        new_rows = []
+        for idx, source in enumerate(edited_records):
+            old = rows[idx] if idx < len(rows) else {}
+            count = max(1, int(source.get("عدد العبوة") or 1))
+            case_price = float(source.get("سعر الدستة") or 0)
+            new_rows.append({"approved": bool(source.get("اعتماد", False)), "image_path": old.get("image_path", source.get("الصورة المعدلة", "")), "name": str(source.get("اسم المنتج", "")).strip(), "type": source.get("النوع", categories[0]), "case_price": case_price, "pack_count": count, "unit_price": round(case_price / count, 2), "notes": str(source.get("الملاحظات", ""))})
+        st.session_state.catalog_rows = new_rows
+        if config.save_catalog(new_rows): st.success("✅ تم حفظ الكتالوج وحالة الاعتماد")
+        else: st.error("تعذر حفظ الكتالوج على القرص")
+        st.rerun()
+    approved = [row for row in rows if row.get("approved")]
+    st.caption(f"الصفوف المعتمدة: {len(approved)} من {len(rows)}")
+    csv_buffer = io.StringIO()
+    writer = csv.DictWriter(csv_buffer, fieldnames=["name", "type", "case_price", "pack_count", "unit_price", "notes", "image_path"])
+    writer.writeheader()
+    writer.writerows(approved)
+    st.download_button("⬇️ تنزيل صفوف الكتالوج CSV", data=csv_buffer.getvalue().encode("utf-8-sig"), file_name="product_catalog.csv", mime="text/csv", key="catalog_csv_download")
+    for idx, row in enumerate(rows):
+        if row.get("image_path") and os.path.exists(row["image_path"]):
+            st.image(row["image_path"], caption=f"{idx + 1}. {row.get('name') or 'بدون اسم'}", width=180)
+
+
 def render_tab_images(blur_bg_opt, blur_intensity_val, logo_opacity, fit_auto_logo, logo_custom_w, logo_custom_h, brand_text_scale, brand_color, brand_position_choice, brand_offset_x, brand_offset_y, extra_brand_suffix, extra_text_scale, extra_color, extra_position_choice, extra_offset_x, extra_offset_y, chosen_size, enhance_quality_opt, sharpness_slider_val, quality_slider_val, logo_position_choice, logo_offset_x, logo_offset_y, color_preset, enable_crop_opt, crop_l, crop_t, crop_r, crop_b, total_target_video_duration, image_duration_per_slide, audio_mode, uploaded_custom_audio, font_choice, remove_logo_bg=True, smart_logo_position=False):
     st.subheader("🖼️ مصنع تجميل صور المنتجات وفيديوهات السلايد شو الذكية")
     uploaded_images = st.file_uploader("ارفع الصور:", type=["jpg", "jpeg", "png"], accept_multiple_files=True, key="img_up_tab2")
     show_orig_toggle = st.checkbox("👁️ عرض الصور الأصلية", key="show_orig_tab2")
     st.info("✂️ القص اليدوي موجود في الشريط الجانبي: فعّل Crop وحدد القص من كل اتجاه قبل بدء المعالجة.")
-    if not uploaded_images: return
+    if not uploaded_images:
+        render_catalog_panel()
+        return
 
     st.markdown("### 📣 إعلان المنتج من الصورة")
     st.caption("اكتب تفاصيل أو اسطمبة اختيارية. عند توفر OPENAI_API_KEY سيقرأ النظام الصورة ويكتب إعلانًا عربيًا تلقائيًا؛ وبدونه سيستخدم القالب المحلي بدل توقف التطبيق.")
@@ -111,6 +191,7 @@ def render_tab_images(blur_bg_opt, blur_intensity_val, logo_opacity, fit_auto_lo
         with open(temp_path, "wb") as stream: stream.write(img_file.getvalue())
         saved_paths.append(utils.process_image_template(temp_path, blur_background=blur_bg_opt, blur_intensity=blur_intensity_val, opacity_val=logo_opacity, fit_auto_logo=fit_auto_logo, logo_custom_w=logo_custom_w, logo_custom_h=logo_custom_h, brand_text_scale=brand_text_scale, brand_color=brand_color, brand_pos=brand_position_choice, brand_off_x=brand_offset_x, brand_off_y=brand_offset_y, extra_text=extra_brand_suffix, extra_text_scale=extra_text_scale, extra_color=extra_color, extra_pos=extra_position_choice, extra_off_x=extra_offset_x, extra_off_y=extra_offset_y, target_size=chosen_size, enhance_quality=enhance_quality_opt, sharpness_val=sharpness_slider_val, quality_val=quality_slider_val, logo_pos_mode=logo_position_choice, logo_off_x=logo_offset_x, logo_off_y=logo_offset_y, color_preset=color_preset, enable_crop=enable_crop_opt, c_left=crop_l, c_top=crop_t, c_right=crop_r, c_bottom=crop_b, font_choice=font_choice, remove_logo_bg=remove_logo_bg, smart_logo_position=smart_logo_position))
         if os.path.exists(temp_path): os.remove(temp_path)
+    render_catalog_panel(saved_paths)
     if album_choice == "📥 ألبوم صور مفرودة منفصلة":
         st.success("🎉 تمت المعالجة بنجاح!")
         for idx, path in enumerate(saved_paths): st.image(path, caption=f"منتج {idx + 1}", use_container_width=True)

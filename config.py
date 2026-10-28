@@ -18,6 +18,8 @@ CUSTOM_AUDIO_TRACK = "custom_track.mp3"
 CHANNELS_FILE = "channels.json"
 KEYWORDS_FILE = "price_keywords.json"
 SETTINGS_FILE = "settings.json"
+CATALOG_FILE = "catalog.json"
+CATEGORIES_FILE = "catalog_categories.json"
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "ضع_التوكن_الافتراضي_هنا")
 
@@ -95,3 +97,44 @@ def load_and_sync_channels():
     with open(CHANNELS_FILE, "w", encoding="utf-8") as f:
         json.dump(default_channels, f, ensure_ascii=False, indent=4)
     return default_channels
+
+
+def load_catalog():
+    if not os.path.exists(CATALOG_FILE):
+        return []
+    try:
+        with open(CATALOG_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, list) else []
+    except (OSError, json.JSONDecodeError, TypeError):
+        return []
+
+def save_catalog(rows):
+    directory = os.path.dirname(os.path.abspath(CATALOG_FILE)) or "."
+    try:
+        fd, temp_path = tempfile.mkstemp(prefix="catalog_", suffix=".json", dir=directory)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(rows, f, ensure_ascii=False, indent=2)
+        os.replace(temp_path, CATALOG_FILE)
+        return True
+    except OSError:
+        return False
+
+
+def load_categories():
+    if not os.path.exists(CATEGORIES_FILE):
+        return []
+    try:
+        with open(CATEGORIES_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, list) else []
+    except (OSError, json.JSONDecodeError, TypeError):
+        return []
+
+def save_categories(categories):
+    try:
+        with open(CATEGORIES_FILE, "w", encoding="utf-8") as f:
+            json.dump(list(dict.fromkeys(categories)), f, ensure_ascii=False, indent=2)
+        return True
+    except OSError:
+        return False
