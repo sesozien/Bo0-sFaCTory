@@ -383,6 +383,11 @@ def _strip_price_mentions(text):
     return re.sub(r'\s*[,،;؛|—–-]\s*', ' ', text)
 
 
+def remove_original_prices(text):
+    """Public wrapper used to migrate products created by older app versions."""
+    return _strip_price_mentions(text)
+
+
 def _make_remote_collage(urls, identity):
     """Download album images once and create one local collage for preview/export."""
     local_paths = []

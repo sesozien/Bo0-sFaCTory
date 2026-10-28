@@ -4,6 +4,7 @@ import tempfile
 
 PAGE_TITLE = "Bo0'sViDClone V13.0 Ultimate"
 PAGE_ICON = "🛰️"
+APP_VERSION = "radar-cleanup-1"
 BRAND_NAME_AR = "مصنع تجميل وإدارة المحتوى الذكي"
 DEVELOPER_SIGNATURE = "Developed with ⚡ by Mr:- Bo0"
 

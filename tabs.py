@@ -128,6 +128,7 @@ def render_tab_images(blur_bg_opt, blur_intensity_val, logo_opacity, fit_auto_lo
 def render_tab_radar(current_channels):
     st.subheader("🛰️ رادار المنتجات اليدوي وكتالوج التصدير")
     st.caption("لا توجد متابعة في الخلفية: اضغط تشغيل الرادار لسحب دفعة واحدة من القنوات العامة، ثم راجع المنتجات قبل الاعتماد.")
+    st.caption(f"إصدار الرادار: {config.APP_VERSION} — إذا ظهرت نتائج قديمة استخدم مسح الدفعة ثم شغّل الرادار من جديد.")
 
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -150,6 +151,18 @@ def render_tab_radar(current_channels):
 
     if "radar_products" not in st.session_state:
         st.session_state.radar_products = []
+
+    clear_col, status_col = st.columns([1, 2])
+    with clear_col:
+        if st.button("🧹 مسح الدفعة القديمة", key="radar_clear_batch"):
+            st.session_state.radar_products = []
+            for key in list(st.session_state.keys()):
+                if str(key).startswith("radar_approved_"):
+                    del st.session_state[key]
+            st.rerun()
+    with status_col:
+        if st.session_state.radar_products:
+            st.info(f"هناك {len(st.session_state.radar_products)} منتجًا محفوظًا في جلسة الرادار.")
 
     if st.button("🛰️ تشغيل الرادار الآن", type="primary", key="radar_scan_now"):
         channels = [line.strip().lstrip('@') for line in channels_text.splitlines() if line.strip()]
@@ -180,6 +193,12 @@ def render_tab_radar(current_channels):
     if not products:
         st.info("لم يتم تحميل منتجات بعد. اكتب القنوات وحدد البداية ثم اضغط تشغيل الرادار.")
         return
+
+    # Migrate products created before price cleanup so the old price cannot remain
+    # in a title/description after a deployment or Streamlit rerun.
+    for product in products:
+        product["title"] = utils.remove_original_prices(product.get("title", "")).strip() or "منتج جديد"
+        product["description"] = utils.remove_original_prices(product.get("description", "")).strip()
 
     st.markdown(f"### المنتجات المكتشفة ({len(products)})")
     if st.button("✅ تحديد كل المنتجات للمراجعة", key="radar_approve_all"):
