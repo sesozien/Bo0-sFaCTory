@@ -2,6 +2,9 @@ import csv
 import io
 import os
 import re
+import shutil
+import uuid
+from urllib.parse import quote
 import requests
 import streamlit as st
 from bs4 import BeautifulSoup
@@ -100,8 +103,14 @@ def render_catalog_panel(processed_images=None):
         existing = {str(row.get("image_path")) for row in st.session_state.catalog_rows}
         for image_path in processed_images:
             if str(image_path) not in existing:
-                st.session_state.catalog_rows.append({"approved": False, "image_path": str(image_path), "name": "", "type": categories[0], "case_price": 0.0, "pack_count": 1, "unit_price": 0.0, "notes": ""})
-                existing.add(str(image_path))
+                suffix = os.path.splitext(str(image_path))[1] or ".jpg"
+                durable_path = os.path.join(config.CATALOG_IMAGES_DIR, f"product_{uuid.uuid4().hex[:10]}{suffix}")
+                try:
+                    shutil.copyfile(str(image_path), durable_path)
+                except OSError:
+                    durable_path = str(image_path)
+                st.session_state.catalog_rows.append({"approved": False, "image_path": durable_path, "name": "", "type": categories[0], "case_price": 0.0, "pack_count": 1, "unit_price": 0.0, "notes": ""})
+                existing.add(durable_path)
     rows = st.session_state.catalog_rows
     if not rows:
         st.info("بعد معالجة الصور ستظهر النسخ المعدلة هنا كصفوف.")
@@ -204,6 +213,80 @@ def render_tab_images(blur_bg_opt, blur_intensity_val, logo_opacity, fit_auto_lo
             video = concat_videoclips(clips, method="compose")
             video.write_videofile("slideshow_out.mp4", codec="libx264", fps=24, preset="ultrafast")
             st.video("slideshow_out.mp4")
+
+
+def render_tab_store():
+    """Simple customer-facing catalog: browse, cart, and handoff to WhatsApp."""
+    st.markdown("# 🛍️ اختارها واطلبها")
+    st.caption("اختار المنتج، ضيفه للسلة، وابعت طلبك على واتساب بدون تسجيل أو دفع إلكتروني.")
+    all_rows = [row for row in config.load_catalog() if row.get("approved") and row.get("name")]
+    if not all_rows:
+        st.info("المتجر لسه مستني منتجات معتمدة من تبويب الصور والمنتجات.")
+        return
+    categories = ["الكل"] + list(dict.fromkeys(row.get("type", "أخرى") for row in all_rows))
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        search = st.text_input("🔎 دور على منتج", key="store_search", placeholder="مثال: توكة أو مكياج")
+    with col2:
+        category = st.selectbox("القسم", categories, key="store_category")
+    visible = [row for row in all_rows if (category == "الكل" or row.get("type") == category) and (not search.strip() or search.casefold() in row.get("name", "").casefold())]
+    if not visible:
+        st.warning("مفيش منتجات مطابقة للبحث الحالي.")
+        return
+    if "store_cart" not in st.session_state:
+        st.session_state.store_cart = {}
+    st.markdown(f"### المنتجات المتاحة ({len(visible)})")
+    for index, row in enumerate(visible):
+        product_id = str(row.get("image_path") or row.get("name") or index)
+        with st.container(border=True):
+            left, right = st.columns([1, 2])
+            with left:
+                image_path = row.get("image_path", "")
+                if image_path and os.path.exists(image_path):
+                    st.image(image_path, use_container_width=True)
+                else:
+                    st.caption("الصورة غير متاحة")
+            with right:
+                st.markdown(f"### {row.get('name')}")
+                st.caption(f"القسم: {row.get('type', 'أخرى')}")
+                st.write(row.get("notes") or "منتج مميز")
+                st.markdown(f"**{float(row.get('unit_price') or 0):g} جنيه للقطعة**")
+                qty = st.number_input("الكمية", min_value=0, max_value=99, value=0, step=1, key=f"store_qty_{product_id}")
+                if st.button("🛒 أضف للسلة", key=f"store_add_{product_id}"):
+                    if qty < 1:
+                        st.warning("اختار كمية الأول")
+                    else:
+                        st.session_state.store_cart[product_id] = {"row": row, "qty": int(qty)}
+                        st.success("اتضاف للسلة")
+    st.divider()
+    st.markdown("## 🛒 سلتك")
+    cart = st.session_state.store_cart
+    if not cart:
+        st.info("السلة فاضية — اختار منتج واضغط أضف للسلة.")
+        return
+    total = 0.0
+    lines = []
+    for product_id, item in list(cart.items()):
+        row, qty = item["row"], int(item["qty"])
+        unit = float(row.get("unit_price") or 0)
+        subtotal = unit * qty
+        total += subtotal
+        lines.append(f"- {row.get('name')} × {qty} = {subtotal:g} جنيه")
+        st.write(f"{row.get('name')} — {qty} × {unit:g} = **{subtotal:g} جنيه**")
+    st.markdown(f"### الإجمالي: {total:g} جنيه")
+    name = st.text_input("اسمك", key="store_customer_name")
+    phone = st.text_input("رقم الهاتف", key="store_customer_phone")
+    address = st.text_area("العنوان بالتفصيل", key="store_customer_address")
+    notes = st.text_input("ملاحظات الطلب (اختياري)", key="store_customer_notes")
+    if st.button("📲 اطلب على واتساب", type="primary", key="store_send_whatsapp"):
+        if not name.strip() or not phone.strip() or not address.strip():
+            st.error("اكتب الاسم ورقم الهاتف والعنوان علشان نقدر نتواصل معاك.")
+        else:
+            message = "طلب جديد من اختارها واطلبها\n\n" + "\n".join(lines) + f"\n\nالإجمالي: {total:g} جنيه\n\nالاسم: {name}\nالهاتف: {phone}\nالعنوان: {address}"
+            if notes.strip():
+                message += f"\nملاحظات: {notes}"
+            st.link_button("فتح واتساب وإرسال الطلب", f"https://wa.me/{config.CUSTOMER_WHATSAPP_NUMBER}?text={quote(message)}")
+            st.success("الطلب جاهز — اضغط زر فتح واتساب لإرساله.")
 
 
 def render_tab_radar(current_channels):

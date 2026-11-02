@@ -166,14 +166,16 @@ def main():
     st.markdown("<style>.main{background-color:#0e1117}.web-banner{background:linear-gradient(135deg,#111115 0%,#ff4b4b 100%);padding:35px;border-radius:15px;text-align:center;margin-bottom:25px}.banner-title{color:#fff;font-size:38px;font-weight:bold}.banner-subtitle{color:#e0e0e0;font-size:20px}</style>", unsafe_allow_html=True)
     st.markdown(f'<div class="web-banner"><div class="banner-title">Mr:- Bo0</div><div class="banner-subtitle">{config.BRAND_NAME_AR} (Clean App Edition)</div></div>', unsafe_allow_html=True)
 
-    tab1, tab2, tab3, tab4 = st.tabs(["🎬 الفيديو", "🖼️ الصور والمنتجات", "🛰️ رادار القنوات", "🔥 الترندات"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["🎬 الفيديو", "🖼️ الصور والمنتجات", "🛍️ اختارها واطلبها", "🛰️ رادار القنوات", "🔥 الترندات"])
     with tab1:
         tabs.render_tab_video(settings["chosen_size"], settings["logo_pos"], settings["logo_ox"], settings["logo_oy"], settings["logo_opacity"], settings["logo_w"], settings["logo_h"], settings["audio_mode"], settings["custom_audio"])
     with tab2:
         tabs.render_tab_images(settings["blur_bg"], settings["blur_val"], settings["logo_opacity"], settings["fit_auto_logo"], settings["logo_w"], settings["logo_h"], settings["brand_sc"], settings["brand_cl"], settings["brand_pos"], settings["brand_ox"], settings["brand_oy"], settings["extra_suffix"], settings["extra_sc"], settings["extra_cl"], settings["extra_pos"], settings["extra_ox"], settings["extra_oy"], settings["chosen_size"], settings["enhance"], settings["sharp"], settings["quality"], settings["logo_pos"], settings["logo_ox"], settings["logo_oy"], st.session_state.c_preset, settings["crop"] != [0, 0, 0, 0], *settings["crop"], 60, 5, settings["audio_mode"], settings["custom_audio"], settings["font_choice"], settings["remove_logo_bg"], settings["smart_logo"])
     with tab3:
-        tabs.render_tab_radar(channels)
+        tabs.render_tab_store()
     with tab4:
+        tabs.render_tab_radar(channels)
+    with tab5:
         tabs.render_tab_trends()
 
     config.save_settings(st.session_state)
