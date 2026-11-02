@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import tempfile
 
 PAGE_TITLE = "Bo0'sViDClone V13.0 Ultimate"
@@ -112,6 +113,7 @@ def load_catalog():
     except (OSError, json.JSONDecodeError, TypeError):
         return []
 
+
 def save_catalog(rows):
     directory = os.path.dirname(os.path.abspath(CATALOG_FILE)) or "."
     try:
@@ -124,6 +126,27 @@ def save_catalog(rows):
         return False
 
 
+def clear_catalog_storage():
+    """Remove the stored catalog and all generated catalog images."""
+    try:
+        if os.path.exists(CATALOG_FILE):
+            os.remove(CATALOG_FILE)
+    except OSError:
+        pass
+    try:
+        if os.path.exists(CATEGORIES_FILE):
+            os.remove(CATEGORIES_FILE)
+    except OSError:
+        pass
+    if os.path.isdir(CATALOG_IMAGES_DIR):
+        try:
+            shutil.rmtree(CATALOG_IMAGES_DIR)
+        except OSError:
+            pass
+        os.makedirs(CATALOG_IMAGES_DIR, exist_ok=True)
+    return True
+
+
 def load_categories():
     if not os.path.exists(CATEGORIES_FILE):
         return []
@@ -133,6 +156,7 @@ def load_categories():
         return data if isinstance(data, list) else []
     except (OSError, json.JSONDecodeError, TypeError):
         return []
+
 
 def save_categories(categories):
     try:
