@@ -39,6 +39,21 @@ DEFAULT_WIDGETS = {
 }
 
 
+def _normalize_bool(value, default):
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        cleaned = value.strip().lower()
+        if cleaned in {"1", "true", "yes", "on"}:
+            return True
+        if cleaned in {"0", "false", "no", "off", ""}:
+            return False
+    if isinstance(value, (int, float)):
+        if value in (0, 1):
+            return bool(value)
+    return bool(default)
+
+
 def initialize_files():
     os.makedirs(config.TMP_DIR, exist_ok=True)
     # logo.png بجوار ملفات المشروع هو المصدر الأساسي للوجو عند النشر.
@@ -58,7 +73,13 @@ def initialize_state():
     saved = config.load_settings()
     for key, default in DEFAULT_WIDGETS.items():
         if key not in st.session_state:
-            st.session_state[key] = saved.get(key, default)
+            value = saved.get(key, default)
+            if isinstance(default, bool):
+                st.session_state[key] = _normalize_bool(value, default)
+            else:
+                st.session_state[key] = value if value is not None else default
+        elif isinstance(default, bool):
+            st.session_state[key] = _normalize_bool(st.session_state[key], default)
     if "cached_posts" not in st.session_state:
         st.session_state.cached_posts = []
     if "product_price_index" not in st.session_state:
@@ -83,7 +104,7 @@ def render_sidebar():
         st.write("---")
         color_preset = st.selectbox("فلتر الألوان الذكي:", [
             "طبيعي (بدون فلتر)", "زاهي ومشرق (Vibrant Product)", "تباين دافئ (Warm Pop)",
-            "سينمائي داكن (Cinematic Dark)", "أبيض وأسود فاخر (Black & White)"], key="c_preset")
+            "سينمائي داكن (Cinematic Dark)", "أبيض وأسود فاخر (Black & White)"] , key="c_preset")
         dim_map = {
             "تلقائي (حجم الملف الأصلي)": None,
             "تيك توك / ريلز (9:16 - 1080x1920)": (1080, 1920),
@@ -97,7 +118,7 @@ def render_sidebar():
         font_choice = st.selectbox("اختر الخط المفضل:", [
             "Cairo (عربي عريض فاخر)", "Tajawal (عربي أنيق وانسيابي)",
             "Amiri (عربي كلاسيكي أصيل)", "Roboto (إنجليزي مودرن وسريع)",
-            "Montserrat (إنجليزي عريض وبارز)"], key="font_sel")
+            "Montserrat (إنجليزي عريض وبارز)"] , key="font_sel")
 
         st.write("---")
         st.markdown("### 🎯 اللوجو والكتابة")
@@ -108,8 +129,8 @@ def render_sidebar():
         logo_ox = st.slider("الإحداثي الأفقي (X):", -1000, 1000, key="l_ox")
         logo_oy = st.slider("الإحداثي الرأسي (Y):", -1000, 1000, key="l_oy")
         logo_opacity = st.slider("شفافية اللوجو:", 0.1, 1.0, key="l_op")
-        fit_auto_logo = st.checkbox("تكيف اللوجو التلقائي (Auto Fit)", key="logo_fit_auto")
-        remove_logo_bg = st.checkbox("🫥 إزالة الخلفية البيضاء للوجو تلقائياً", key="rem_bg_chk")
+        fit_auto_logo = st.checkbox("تكيف اللوجو التلقائي (Auto Fit)", key="logo_fit_auto", value=st.session_state.get("logo_fit_auto", False))
+        remove_logo_bg = st.checkbox("🫥 إزالة الخلفية البيضاء للوجو تلقائياً", key="rem_bg_chk", value=st.session_state.get("rem_bg_chk", True))
         logo_w = st.slider("عرض اللوجو (px):", 10, 1000, key="logo_w")
         logo_h = st.slider("ارتفاع اللوجو (px):", 10, 1000, key="logo_h")
         if utils.ensure_valid_image(config.ACTIVE_LOGO_PATH):
@@ -137,12 +158,12 @@ def render_sidebar():
         extra_cl = st.color_picker("لون خط الجملة:", key="e_cl")
 
         st.write("---")
-        blur_bg = st.checkbox("تفعيل خلفية Blur", key="blur_bg")
+        blur_bg = st.checkbox("تفعيل خلفية Blur", key="blur_bg", value=st.session_state.get("blur_bg", True))
         blur_val = st.slider("قوة التغبيش (Blur):", 1, 30, key="blur_val")
-        enhance = st.checkbox("تفعيل فلتر الجودة والحدة", key="enhance_opt")
+        enhance = st.checkbox("تفعيل فلتر الجودة والحدة", key="enhance_opt", value=st.session_state.get("enhance_opt", True))
         sharp = st.slider("حدة التفاصيل:", 0.0, 5.0, key="sharp_val")
         quality = st.slider("جودة الضغط (%):", 10, 100, key="q_val")
-        enable_crop = st.checkbox("✂️ تفعيل قص أطراف الصور (Crop)", key="enable_crop")
+        enable_crop = st.checkbox("✂️ تفعيل قص أطراف الصور (Crop)", key="enable_crop", value=st.session_state.get("enable_crop", False))
         crop = [st.slider(label, 0, 500, key=key) for label, key in [("قص يسار:", "c_l"), ("قص أعلى:", "c_t"), ("قص يمين:", "c_r"), ("قص أسفل:", "c_b")]] if enable_crop else [0, 0, 0, 0]
         audio_mode = st.radio("مصدر الصوت:", ["تراك المزيكا الحصري التلقائي", "رفع تراك أوديو MP3 مخصص من جهازك"], key="audio_mode")
         custom_audio = st.file_uploader("ارفع الأوديو:", type=["mp3", "wav", "ogg"], key="custom_audio") if audio_mode.startswith("رفع") else None
@@ -163,10 +184,10 @@ def main():
     initialize_state()
     channels = config.load_and_sync_channels()
     settings = render_sidebar()
-    st.markdown("<style>.main{background-color:#0e1117}.web-banner{background:linear-gradient(135deg,#111115 0%,#ff4b4b 100%);padding:35px;border-radius:15px;text-align:center;margin-bottom:25px}.banner-title{color:#fff;font-size:38px;font-weight:bold}.banner-subtitle{color:#e0e0e0;font-size:20px}</style>", unsafe_allow_html=True)
+    st.markdown("<style>.main{background-color:#0e1117}.web-banner{background:linear-gradient(135deg,#111115 0%,#ff4b4b 100%);padding:35px;border-radius:15px;text-align:center;margin-bottom:25px}.banner-title{font-size:2rem;font-weight:800;color:#fff}.banner-subtitle{font-size:1.1rem;color:#ffe5e5;margin-top:8px}</style>", unsafe_allow_html=True)
     st.markdown(f'<div class="web-banner"><div class="banner-title">Mr:- Bo0</div><div class="banner-subtitle">{config.BRAND_NAME_AR} (Clean App Edition)</div></div>', unsafe_allow_html=True)
 
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["🎬 الفيديو", "🖼️ الصور والمنتجات", "🛍️ اختارها واطلبها", "🛰️ رادار القنوات", "🔥 الترندات"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["🎬 الفيديو", "🖼️ الصور والمنتجات", "🛍️ اختارها واطلبها", "🛰️ رادار القنوات", "🔥 الاتجاهات"])
     with tab1:
         tabs.render_tab_video(settings["chosen_size"], settings["logo_pos"], settings["logo_ox"], settings["logo_oy"], settings["logo_opacity"], settings["logo_w"], settings["logo_h"], settings["audio_mode"], settings["custom_audio"])
     with tab2:
