@@ -85,87 +85,168 @@ def _catalog_categories():
     return list(dict.fromkeys(defaults + custom))
 
 
+def _catalog_row_id(row, index):
+    return str(row.get("id") or row.get("image_path") or f"row-{index}")
+
+
+def _clean_product_name(value):
+    name = os.path.splitext(os.path.basename(str(value or "")))[0]
+    name = re.sub(r"[_\-]+", " ", name)
+    return re.sub(r"\s+", " ", name).strip(" .") or "منتج جديد"
+
+
+def _catalog_duplicate(rows, name, category, skip_index=None):
+    wanted = re.sub(r"\s+", " ", str(name or "")).strip().casefold()
+    for index, row in enumerate(rows):
+        if skip_index == index:
+            continue
+        current = re.sub(r"\s+", " ", str(row.get("name", ""))).strip().casefold()
+        if wanted and current == wanted and str(row.get("type", "")) == str(category):
+            return True
+    return False
+
+
+def _persist_catalog(rows):
+    st.session_state.catalog_rows = rows
+    return config.save_catalog(rows)
+
+
 def render_catalog_panel(processed_images=None):
     st.markdown("## 🗂️ كتالوج المنتجات")
-    st.caption("أضف الصور بعد تعديلها، ثم املأ بيانات المنتج. سعر القطعة يُحسب تلقائيًا من سعر الدستة ÷ عدد العبوات.")
+    st.caption("كل منتج له صف مستقل. اكتب البيانات واضغط حفظ الصف، وسيُحفظ فورًا.")
+    categories = _catalog_categories()
     with st.sidebar.expander("➕ إضافة تصنيف جديد", expanded=False):
         new_category = st.text_input("اسم التصنيف", key="catalog_new_category")
         if st.button("إضافة التصنيف", key="catalog_add_category"):
             clean = new_category.strip()
-            if clean and clean not in _catalog_categories():
-                st.session_state.setdefault("catalog_custom_categories", []).append(clean)
+            if clean and clean not in categories:
+                st.session_state.catalog_custom_categories.append(clean)
                 config.save_categories(st.session_state.catalog_custom_categories)
-                st.success("تمت إضافة التصنيف")
+                st.success("تمت إضافة التصنيف وحفظه")
                 st.rerun()
     with st.sidebar.expander("🧹 أدوات تنظيف الكتالوج", expanded=False):
-        st.caption("يمسح الكتالوج المحفوظ وصوره وتصنيفاته المخصصة فقط.")
+        st.caption("يمسح ملف الكتالوج والصور والتصنيفات المخصصة نهائيًا.")
+        confirm_clear = st.checkbox("أؤكد مسح الكتالوج بالكامل", key="catalog_clear_confirm")
         if st.button("مسح الكتالوج بالكامل", key="catalog_clear_all"):
-            config.clear_catalog_storage()
-            st.session_state.catalog_rows = []
-            st.session_state.catalog_custom_categories = []
-            st.success("تم مسح الكتالوج والصور والتصنيفات")
-            st.rerun()
-    categories = _catalog_categories()
+            if not confirm_clear:
+                st.warning("فعّل التأكيد أولًا")
+            else:
+                config.clear_catalog_storage()
+                st.session_state.catalog_rows = []
+                st.session_state.catalog_custom_categories = []
+                st.success("تم مسح الكتالوج والصور والتصنيفات")
+                st.rerun()
     if "catalog_rows" not in st.session_state:
         st.session_state.catalog_rows = config.load_catalog()
-    if processed_images:
-        existing = {str(row.get("image_path")) for row in st.session_state.catalog_rows}
-        for image_path in processed_images:
-            if str(image_path) not in existing:
-                suffix = os.path.splitext(str(image_path))[1] or ".jpg"
-                durable_path = os.path.join(config.CATALOG_IMAGES_DIR, f"product_{uuid.uuid4().hex[:10]}{suffix}")
-                try:
-                    shutil.copyfile(str(image_path), durable_path)
-                except OSError:
-                    durable_path = str(image_path)
-                st.session_state.catalog_rows.append({"approved": False, "image_path": durable_path, "name": "", "type": categories[0], "case_price": 0.0, "pack_count": 1, "unit_price": 0.0, "notes": ""})
-                existing.add(durable_path)
     rows = st.session_state.catalog_rows
+    for index, row in enumerate(rows):
+        row.setdefault("id", _catalog_row_id(row, index))
+    if processed_images:
+        existing_paths = {str(row.get("image_path")) for row in rows}
+        changed = False
+        for image_path in processed_images:
+            if str(image_path) in existing_paths:
+                continue
+            suffix = os.path.splitext(str(image_path))[1] or ".jpg"
+            durable_path = os.path.join(config.CATALOG_IMAGES_DIR, f"product_{uuid.uuid4().hex[:10]}{suffix}")
+            try:
+                shutil.copyfile(str(image_path), durable_path)
+            except OSError:
+                durable_path = str(image_path)
+            rows.append({"id": uuid.uuid4().hex, "approved": False, "image_path": durable_path, "name": _clean_product_name(durable_path), "type": categories[0], "case_price": 0.0, "pack_count": 1, "unit_price": 0.0, "notes": ""})
+            existing_paths.add(str(image_path))
+            changed = True
+        if changed:
+            _persist_catalog(rows)
+            st.success("✅ الصور المعدلة اتضافت للكتالوج تلقائيًا")
+    with st.expander("➕ إضافة منتج يدوي للكتالوج", expanded=not bool(rows)):
+        manual_image = st.file_uploader("صورة المنتج المعدلة", type=["jpg", "jpeg", "png"], key="catalog_manual_image")
+        default_name = _clean_product_name(manual_image.name) if manual_image else ""
+        with st.form("catalog_manual_form", clear_on_submit=False):
+            manual_name = st.text_input("اسم المنتج", value=default_name, key="catalog_manual_name")
+            manual_type = st.selectbox("النوع", categories, key="catalog_manual_type")
+            manual_case = st.number_input("سعر الدستة", min_value=0.0, step=1.0, key="catalog_manual_case")
+            manual_count = st.number_input("عدد العبوة", min_value=1, value=1, step=1, key="catalog_manual_count")
+            st.caption(f"سعر القطعة المحسوب: {manual_case / max(1, manual_count):.2f} جنيه")
+            manual_notes = st.text_area("الملاحظات / المقاسات / الألوان / الخامة", key="catalog_manual_notes")
+            manual_approved = st.checkbox("اعتماد المنتج للمتجر", key="catalog_manual_approved")
+            manual_submit = st.form_submit_button("💾 حفظ المنتج في الكتالوج")
+        if manual_submit:
+            if not manual_image:
+                st.error("ارفع صورة المنتج أولًا")
+            elif not manual_name.strip():
+                st.error("اكتب اسم المنتج")
+            elif _catalog_duplicate(rows, manual_name, manual_type):
+                st.warning("هذا المنتج موجود بنفس الاسم والتصنيف، لم تتم إضافته مرة أخرى")
+            else:
+                suffix = os.path.splitext(manual_image.name)[1].lower() or ".png"
+                image_path = os.path.join(config.CATALOG_IMAGES_DIR, f"product_{uuid.uuid4().hex[:10]}{suffix}")
+                with open(image_path, "wb") as stream:
+                    stream.write(manual_image.getvalue())
+                rows.append({"id": uuid.uuid4().hex, "approved": bool(manual_approved), "image_path": image_path, "name": manual_name.strip(), "type": manual_type, "case_price": float(manual_case), "pack_count": int(manual_count), "unit_price": round(float(manual_case) / max(1, int(manual_count)), 2), "notes": manual_notes.strip()})
+                if _persist_catalog(rows):
+                    st.success("✅ تم حفظ المنتج فورًا في الكتالوج")
+                    st.rerun()
+                else:
+                    st.error("تعذر حفظ الكتالوج")
     if not rows:
-        st.info("بعد معالجة الصور ستظهر النسخ المعدلة هنا كصفوف.")
+        st.info("لا توجد منتجات. أضف منتجًا يدويًا أو عالج صورة من الأعلى.")
         return
-    table_rows = []
-    for row in rows:
-        count = max(1, int(row.get("pack_count") or 1))
-        case_price = float(row.get("case_price") or 0)
-        table_rows.append({"اعتماد": bool(row.get("approved", False)), "الصورة المعدلة": row.get("image_path", ""), "اسم المنتج": row.get("name", ""), "النوع": row.get("type", categories[0]), "سعر الدستة": case_price, "عدد العبوة": count, "سعر القطعة": round(case_price / count, 2), "الملاحظات": row.get("notes", "")})
-    edited = st.data_editor(table_rows, key="catalog_editor", num_rows="dynamic", hide_index=True, use_container_width=True, column_config={
-        "اعتماد": st.column_config.CheckboxColumn("اعتماد", help="حدد الصف ليظهر في التصدير", default=False),
-        "الصورة المعدلة": st.column_config.TextColumn("الصورة المعدلة", disabled=True),
-        "اسم المنتج": st.column_config.TextColumn("اسم المنتج"),
-        "النوع": st.column_config.SelectboxColumn("النوع", options=categories),
-        "سعر الدستة": st.column_config.NumberColumn("سعر الدستة", min_value=0, step=1),
-        "عدد العبوة": st.column_config.NumberColumn("عدد العبوة", min_value=1, step=1),
-        "سعر القطعة": st.column_config.NumberColumn("سعر القطعة", disabled=True, format="%.2f"),
-        "الملاحظات": st.column_config.TextColumn("الملاحظات"),
-    }, disabled=["الصورة المعدلة", "سعر القطعة"])
-    edited_records = edited.to_dict("records") if hasattr(edited, "to_dict") else list(edited)
-    for idx, source in enumerate(edited_records):
-        if idx < len(rows):
-            rows[idx]["approved"] = bool(source.get("اعتماد", False))
-
-    if st.button("💾 حفظ تعديلات الكتالوج", type="primary", key="catalog_save"):
-        new_rows = []
-        for idx, source in enumerate(edited_records):
-            old = rows[idx] if idx < len(rows) else {}
-            count = max(1, int(source.get("عدد العبوة") or 1))
-            case_price = float(source.get("سعر الدستة") or 0)
-            new_rows.append({"approved": bool(source.get("اعتماد", False)), "image_path": old.get("image_path", source.get("الصورة المعدلة", "")), "name": str(source.get("اسم المنتج", "")).strip(), "type": source.get("النوع", categories[0]), "case_price": case_price, "pack_count": count, "unit_price": round(case_price / count, 2), "notes": str(source.get("الملاحظات", ""))})
-        st.session_state.catalog_rows = new_rows
-        if config.save_catalog(new_rows): st.success("✅ تم حفظ الكتالوج وحالة الاعتماد")
-        else: st.error("تعذر حفظ الكتالوج على القرص")
-        st.rerun()
-    approved = [row for row in rows if row.get("approved")]
-    st.caption(f"الصفوف المعتمدة: {len(approved)} من {len(rows)}")
+    st.markdown(f"### المنتجات الحالية: {len(rows)} | المعتمدة للمتجر: {sum(bool(row.get('approved')) for row in rows)}")
+    st.caption("غيّر الخانات داخل الصف ثم اضغط حفظ الصف. الاعتماد محفوظ مع الصف نفسه.")
+    for index, row in enumerate(list(rows)):
+        row_id = _catalog_row_id(row, index)
+        name_key = f"cat_name_{row_id}"
+        type_key = f"cat_type_{row_id}"
+        approved_key = f"cat_approved_{row_id}"
+        case_key = f"cat_case_{row_id}"
+        count_key = f"cat_count_{row_id}"
+        notes_key = f"cat_notes_{row_id}"
+        st.session_state.setdefault(name_key, str(row.get("name", "")))
+        st.session_state.setdefault(type_key, row.get("type") if row.get("type") in categories else categories[0])
+        st.session_state.setdefault(approved_key, bool(row.get("approved", False)))
+        st.session_state.setdefault(case_key, float(row.get("case_price") or 0))
+        st.session_state.setdefault(count_key, max(1, int(row.get("pack_count") or 1)))
+        st.session_state.setdefault(notes_key, str(row.get("notes", "")))
+        with st.container(border=True):
+            if row.get("image_path") and os.path.exists(row["image_path"]):
+                st.image(row["image_path"], width=160, caption=f"صورة المنتج {index + 1}")
+            c1, c2 = st.columns(2)
+            with c1:
+                name = st.text_input("اسم المنتج", key=name_key)
+                category = st.selectbox("النوع", categories, key=type_key)
+                approved = st.checkbox("✅ اعتماد المنتج للمتجر", key=approved_key)
+            with c2:
+                case_price = st.number_input("سعر الدستة", min_value=0.0, step=1.0, key=case_key)
+                pack_count = st.number_input("عدد العبوة", min_value=1, step=1, key=count_key)
+                st.metric("سعر القطعة", f"{case_price / max(1, pack_count):.2f} جنيه")
+            notes = st.text_area("الملاحظات / المقاسات / الألوان / الخامة", key=notes_key)
+            save_col, delete_col = st.columns(2)
+            with save_col:
+                save_row = st.button("💾 حفظ الصف الآن", key=f"cat_save_{row_id}")
+            with delete_col:
+                delete_row = st.button("🗑️ حذف هذا المنتج", key=f"cat_delete_{row_id}")
+            if save_row:
+                if not name.strip():
+                    st.error("اكتب اسم المنتج قبل الحفظ")
+                elif _catalog_duplicate(rows, name, category, skip_index=index):
+                    st.warning("يوجد منتج آخر بنفس الاسم والتصنيف")
+                else:
+                    rows[index] = {**row, "name": name.strip(), "type": category, "approved": bool(approved), "case_price": float(case_price), "pack_count": int(pack_count), "unit_price": round(float(case_price) / max(1, int(pack_count)), 2), "notes": notes.strip()}
+                    _persist_catalog(rows)
+                    st.success("✅ تم حفظ الصف وحالة الاعتماد")
+                    st.rerun()
+            elif delete_row:
+                rows.pop(index)
+                _persist_catalog(rows)
+                st.success("تم حذف المنتج")
+                st.rerun()
+    approved_rows = [row for row in rows if row.get("approved")]
     csv_buffer = io.StringIO()
-    writer = csv.DictWriter(csv_buffer, fieldnames=["name", "type", "case_price", "pack_count", "unit_price", "notes", "image_path"])
+    writer = csv.DictWriter(csv_buffer, fieldnames=["name", "type", "case_price", "pack_count", "unit_price", "notes", "image_path"], extrasaction="ignore")
     writer.writeheader()
-    writer.writerows(approved)
-    st.download_button("⬇️ تنزيل صفوف الكتالوج CSV", data=csv_buffer.getvalue().encode("utf-8-sig"), file_name="product_catalog.csv", mime="text/csv", key="catalog_csv_download")
-    for idx, row in enumerate(rows):
-        if row.get("image_path") and os.path.exists(row["image_path"]):
-            st.image(row["image_path"], caption=f"{idx + 1}. {row.get('name') or 'بدون اسم'}", width=180)
-
+    writer.writerows(approved_rows)
+    st.download_button("⬇️ تنزيل الكتالوج المعتمد CSV", data=csv_buffer.getvalue().encode("utf-8-sig"), file_name="product_catalog.csv", mime="text/csv", key="catalog_csv_download")
 
 def render_tab_images(blur_bg_opt, blur_intensity_val, logo_opacity, fit_auto_logo, logo_custom_w, logo_custom_h, brand_text_scale, brand_color, brand_position_choice, brand_offset_x, brand_offset_y, extra_brand_suffix, extra_text_scale, extra_color, extra_position_choice, extra_offset_x, extra_offset_y, chosen_size, enhance_quality_opt, sharpness_slider_val, quality_slider_val, logo_position_choice, logo_offset_x, logo_offset_y, color_preset, enable_crop_opt, crop_l, crop_t, crop_r, crop_b, total_target_video_duration, image_duration_per_slide, audio_mode, uploaded_custom_audio, font_choice, remove_logo_bg=True, smart_logo_position=False):
     st.subheader("🖼️ مصنع تجميل صور المنتجات وفيديوهات السلايد شو الذكية")
@@ -177,7 +258,14 @@ def render_tab_images(blur_bg_opt, blur_intensity_val, logo_opacity, fit_auto_lo
         return
 
     st.markdown("### 📣 إعلان المنتج من الصورة")
-    st.caption("اكتب تفاصيل أو اسطمبة اختيارية. عند توفر OPENAI_API_KEY سيقرأ النظام الصورة ويكتب إعلانًا عربيًا تلقائيًا؛ وبدونه سيستخدم القالب المحلي بدل توقف التطبيق.")
+    st.caption("اكتب تفاصيل أو اسطمبة اختيارية. سيقرأ النظام الصورة عند ضبط مفتاح OpenAI في Streamlit Secrets، وإلا سيستخدم القالب المحلي.")
+    ai_status = utils.openai_status()
+    with st.expander("🔐 حالة اتصال OpenAI", expanded=False):
+        if ai_status["configured"]:
+            st.success(f"المفتاح مقروء من Secrets/البيئة — النموذج: {ai_status['model']}")
+            st.caption(f"العنوان: {ai_status['base']}")
+        else:
+            st.warning("المفتاح غير مقروء. أضف OPENAI_API_KEY في Streamlit → Settings → Secrets، بدون علامات اقتباس إضافية.")
     ad_details = st.text_input("اسم المنتج أو تفاصيله:", key="ad_details")
     ad_template = st.text_area("اسطمبة الإعلان اليدوية (اختياري):", placeholder="مثال: {المنتج} — جودة عالية، اطلب الآن...", key="ad_template")
     with st.expander("📝 تحسين قراءة النص داخل الصورة", expanded=False):
@@ -206,7 +294,7 @@ def render_tab_images(blur_bg_opt, blur_intensity_val, logo_opacity, fit_auto_lo
         st.session_state.generated_ad_text = ""
     if st.session_state.generated_ad_text:
         if not st.session_state.get("generated_ad_vision", False):
-            st.warning("تم استخدام القالب المحلي. للقراءة الفعلية لتفاصيل الصورة أضف OPENAI_API_KEY في Secrets الخاصة بـ Streamlit.")
+            st.warning("تم استخدام القالب المحلي. راجع حالة OpenAI أعلى القسم وتأكد من إضافة OPENAI_API_KEY في Secrets.")
         st.text_area("البوست الإعلاني الجاهز للتعديل والنسخ:", key="generated_ad_text", height=220)
     if st.session_state.get("trending_hashtags"):
         st.caption("هاشتاجات اليوم: " + " ".join(st.session_state.trending_hashtags))

@@ -612,6 +612,43 @@ def get_trending_hashtags(limit=8):
         return fallback
 
 
+def _runtime_secret(name, *aliases):
+    """Read Streamlit secrets first, then environment variables, without exposing values."""
+    names = (name,) + aliases
+    try:
+        import streamlit as st
+        for candidate in names:
+            try:
+                value = st.secrets.get(candidate)
+            except Exception:
+                value = None
+            if value:
+                return str(value).strip()
+        for section_name in ("openai", "OPENAI"):
+            try:
+                section = st.secrets.get(section_name, {})
+                if isinstance(section, dict):
+                    for candidate in names:
+                        if section.get(candidate):
+                            return str(section[candidate]).strip()
+            except Exception:
+                pass
+    except Exception:
+        pass
+    for candidate in names:
+        value = os.getenv(candidate, "").strip()
+        if value:
+            return value
+    return ""
+
+
+def openai_status():
+    key = _runtime_secret("OPENAI_API_KEY", "OPENAI_KEY")
+    base = _runtime_secret("OPENAI_API_BASE") or "https://api.openai.com/v1"
+    model = _runtime_secret("OPENAI_VISION_MODEL", "OPENAI_MODEL") or "gpt-4o-mini"
+    return {"configured": bool(key), "base": base, "model": model}
+
+
 def generate_auto_hashtags(product_name, extra_hashtags=None):
     clean_name = re.sub(r"[^\w\u0600-\u06FF\s]", "", product_name or "").strip().replace(" ", "_")
     base_tags = list(extra_hashtags or ["#عروض_مصر", "#تسوق_اونلاين", "#تخفيضات", "#منتجات_تريند", "#توصيل_سريع"])
@@ -626,15 +663,16 @@ def generate_product_ad(image_bytes, manual_template="", extra_details="", hasht
     Without a key, return a useful template-based ad instead of failing the app.
     """
     tags = generate_auto_hashtags(extra_details or "منتج", hashtags)
-    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    status = openai_status()
+    api_key = _runtime_secret("OPENAI_API_KEY", "OPENAI_KEY")
     if api_key and image_bytes:
         try:
             encoded = base64.b64encode(image_bytes).decode("ascii")
-            base_url = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1").rstrip("/")
+            base_url = status["base"].rstrip("/")
             prompt = ("اكتب إعلانًا مصريًا جذابًا بالعربية لهذا المنتج. اقرأ تفاصيل الصورة بدون اختراع مواصفات غير واضحة. "
                       "استخدم القالب اليدوي إن وُجد، واجعل النص مناسبًا لمنشور بيع قصير مع عنوان وفوائد ودعوة للشراء. "
                       f"تفاصيل يدوية: {extra_details or 'لا توجد'}\nالقالب اليدوي: {manual_template or 'اكتب بأسلوبك'}")
-            payload = {"model": os.getenv("OPENAI_VISION_MODEL", "gpt-4o-mini"), "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{encoded}"}}]}], "max_tokens": 500}
+            payload = {"model": status["model"], "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{encoded}"}}]}], "max_tokens": 500}
             response = requests.post(f"{base_url}/chat/completions", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json=payload, timeout=45)
             response.raise_for_status()
             text = response.json()["choices"][0]["message"]["content"].strip()
