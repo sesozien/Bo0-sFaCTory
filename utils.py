@@ -9,6 +9,7 @@ from PIL import Image, ImageFilter, ImageDraw, ImageFont, ImageEnhance, ImageOps
 import arabic_reshaper
 from bidi.algorithm import get_display
 import config
+from image_text_tools import generate_product_ad_with_secrets
 
 def ensure_valid_image(image_path):
     if not os.path.exists(image_path):
@@ -642,8 +643,8 @@ def generate_product_ad(image_bytes, manual_template="", extra_details="", hasht
             pass
     title = extra_details.strip() or "منتج مميز"
     template = manual_template.strip() or "🔥 {المنتج}\n\nجودة ممتازة وشكل عملي يناسب استخدامك اليومي.\nللطلب والاستفسار تواصل معنا الآن."
-    text = template.replace("{المنتج}", title)
-    return f"{text}\n\n{tags}\n\nMr :- Bo0", False
+    fallback_text, _ = generate_product_ad_with_secrets(image_bytes, template, title, tags.split())
+    return f"{fallback_text}\n\nMr :- Bo0", False
 
 
 def supplier_code(channel_name):

@@ -14,6 +14,7 @@ import yt_dlp
 
 import config
 import utils
+from image_text_tools import cleanup_text_from_image
 
 
 def render_tab_video(chosen_size, logo_position_choice, logo_offset_x, logo_offset_y, logo_opacity, logo_custom_w, logo_custom_h, audio_mode, uploaded_custom_audio):
@@ -96,6 +97,14 @@ def render_catalog_panel(processed_images=None):
                 config.save_categories(st.session_state.catalog_custom_categories)
                 st.success("تمت إضافة التصنيف")
                 st.rerun()
+    with st.sidebar.expander("🧹 أدوات تنظيف الكتالوج", expanded=False):
+        st.caption("يمسح الكتالوج المحفوظ وصوره وتصنيفاته المخصصة فقط.")
+        if st.button("مسح الكتالوج بالكامل", key="catalog_clear_all"):
+            config.clear_catalog_storage()
+            st.session_state.catalog_rows = []
+            st.session_state.catalog_custom_categories = []
+            st.success("تم مسح الكتالوج والصور والتصنيفات")
+            st.rerun()
     categories = _catalog_categories()
     if "catalog_rows" not in st.session_state:
         st.session_state.catalog_rows = config.load_catalog()
@@ -171,6 +180,18 @@ def render_tab_images(blur_bg_opt, blur_intensity_val, logo_opacity, fit_auto_lo
     st.caption("اكتب تفاصيل أو اسطمبة اختيارية. عند توفر OPENAI_API_KEY سيقرأ النظام الصورة ويكتب إعلانًا عربيًا تلقائيًا؛ وبدونه سيستخدم القالب المحلي بدل توقف التطبيق.")
     ad_details = st.text_input("اسم المنتج أو تفاصيله:", key="ad_details")
     ad_template = st.text_area("اسطمبة الإعلان اليدوية (اختياري):", placeholder="مثال: {المنتج} — جودة عالية، اطلب الآن...", key="ad_template")
+    with st.expander("📝 تحسين قراءة النص داخل الصورة", expanded=False):
+        st.caption("أداة Copilot احتياطية لتحسين وضوح النص في نسخة منفصلة، ولا تغيّر الصورة الأصلية.")
+        if st.button("تحسين النص الآن", key="cleanup_image_text"):
+            cleaned_bytes = cleanup_text_from_image(uploaded_images[0].getvalue())
+            if cleaned_bytes:
+                st.session_state.cleaned_text_image = cleaned_bytes
+                st.success("تم إنشاء نسخة محسّنة للمعاينة")
+            else:
+                st.error("تعذر قراءة الصورة")
+        if st.session_state.get("cleaned_text_image"):
+            st.image(st.session_state.cleaned_text_image, caption="نسخة تحسين النص", use_container_width=True)
+            st.download_button("تنزيل نسخة تحسين النص", data=st.session_state.cleaned_text_image, file_name="text-enhanced.png", mime="image/png", key="download_cleaned_text")
     ad_col1, ad_col2 = st.columns(2)
     with ad_col1:
         if st.button("🔥 جلب هاشتاجات اليوم", key="fetch_trending_tags"):
