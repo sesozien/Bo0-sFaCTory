@@ -36,6 +36,8 @@ DEFAULT_WIDGETS = {
     "b_items": config.DEFAULT_BOX_ITEMS_COUNT, "fb_url": "https://www.facebook.com/montgk1",
     "max_p": 5000, "d_filt": "كل البوستات المتاحة للقناة",
     "r_mode": "🛰️ سحب رادار حي وفوري", "trend_cat": "الكل",
+    "radar_exclude_forwarded": True, "radar_rounding": True,
+    "radar_review_required": True, "radar_auto_publish": False,
 }
 
 

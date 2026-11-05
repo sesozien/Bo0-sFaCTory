@@ -289,10 +289,10 @@ def render_tab_images(blur_bg_opt, blur_intensity_val, logo_opacity, fit_auto_lo
                 else:
                     st.error("تعذر إزالة النص من الصورة")
         if st.session_state.get("cleaned_text_image"):
-            st.image(st.session_state.cleaned_text_image, caption="نسخة تحسين القراءة — النص موجود", use_container_width=True)
+            st.image(st.session_state.cleaned_text_image, caption="نسخة تحسين القراءة — النص موجود", width="stretch")
             st.download_button("تنزيل نسخة تحسين القراءة", data=st.session_state.cleaned_text_image, file_name="text-enhanced.png", mime="image/png", key="download_cleaned_text")
         if st.session_state.get("removed_text_image"):
-            st.image(st.session_state.removed_text_image, caption="نسخة مسح الكلام", use_container_width=True)
+            st.image(st.session_state.removed_text_image, caption="نسخة مسح الكلام", width="stretch")
             st.download_button("تنزيل نسخة مسح الكلام", data=st.session_state.removed_text_image, file_name="text-removed.png", mime="image/png", key="download_removed_text")
     ad_col1, ad_col2 = st.columns(2)
     with ad_col1:
@@ -314,7 +314,7 @@ def render_tab_images(blur_bg_opt, blur_intensity_val, logo_opacity, fit_auto_lo
         st.caption("هاشتاجات اليوم: " + " ".join(st.session_state.trending_hashtags))
     album_choice = "📥 ألبوم صور مفرودة منفصلة" if len(uploaded_images) == 1 else st.radio("اختر نمط التصدير:", ("📥 ألبوم صور مفرودة منفصلة", "🎬 دمجهم فيديو متحرك (Slideshow)", "🖼️ تجميع في صورة واحدة (Collage)"), key="alb_choice_tab2")
     if show_orig_toggle:
-        for idx, img_file in enumerate(uploaded_images): st.image(img_file, caption=f"أصل صورة {idx + 1}", use_container_width=True)
+        for idx, img_file in enumerate(uploaded_images): st.image(img_file, caption=f"أصل صورة {idx + 1}", width="stretch")
         return
     if not st.button("⚙️ ابدأ معالجة الصور", key="btn_proc_imgs"): return
     saved_paths = []
@@ -326,9 +326,9 @@ def render_tab_images(blur_bg_opt, blur_intensity_val, logo_opacity, fit_auto_lo
     render_catalog_panel(saved_paths)
     if album_choice == "📥 ألبوم صور مفرودة منفصلة":
         st.success("🎉 تمت المعالجة بنجاح!")
-        for idx, path in enumerate(saved_paths): st.image(path, caption=f"منتج {idx + 1}", use_container_width=True)
+        for idx, path in enumerate(saved_paths): st.image(path, caption=f"منتج {idx + 1}", width="stretch")
     elif album_choice == "🖼️ تجميع في صورة واحدة (Collage)":
-        st.image(utils.create_image_collage(saved_paths, chosen_size or (1080, 1080)), caption="صورة الكولاج", use_container_width=True)
+        st.image(utils.create_image_collage(saved_paths, chosen_size or (1080, 1080)), caption="صورة الكولاج", width="stretch")
     else:
         duration = total_target_video_duration / len(saved_paths) if total_target_video_duration else image_duration_per_slide
         with st.spinner("🎬 جاري رندرة السلايد شو..."):
@@ -360,13 +360,13 @@ def render_tab_store():
         st.session_state.store_cart = {}
     st.markdown(f"### المنتجات المتاحة ({len(visible)})")
     for index, row in enumerate(visible):
-        product_id = str(row.get("image_path") or row.get("name") or index)
+        product_id = str(row.get("id") or row.get("image_path") or row.get("name") or index)
         with st.container(border=True):
             left, right = st.columns([1, 2])
             with left:
                 image_path = row.get("image_path", "")
                 if image_path and os.path.exists(image_path):
-                    st.image(image_path, use_container_width=True)
+                    st.image(image_path, width="stretch")
                 else:
                     st.caption("الصورة غير متاحة")
             with right:
@@ -379,7 +379,10 @@ def render_tab_store():
                     if qty < 1:
                         st.warning("اختار كمية الأول")
                     else:
-                        st.session_state.store_cart[product_id] = {"row": row, "qty": int(qty)}
+                        current = st.session_state.store_cart.get(product_id, {"row": row, "qty": 0})
+                        current["row"] = row
+                        current["qty"] = min(99, int(current.get("qty", 0)) + int(qty))
+                        st.session_state.store_cart[product_id] = current
                         st.success("اتضاف للسلة")
     st.divider()
     st.markdown("## 🛒 سلتك")
@@ -387,15 +390,32 @@ def render_tab_store():
     if not cart:
         st.info("السلة فاضية — اختار منتج واضغط أضف للسلة.")
         return
+    cart_left, cart_right = st.columns([2, 1])
+    with cart_left:
+        st.caption("عدّل الكمية من هنا قبل إرسال الطلب.")
+    with cart_right:
+        if st.button("🧹 تفريغ السلة", key="store_clear_cart"):
+            st.session_state.store_cart = {}
+            st.rerun()
     total = 0.0
     lines = []
     for product_id, item in list(cart.items()):
-        row, qty = item["row"], int(item["qty"])
+        row = item["row"]
         unit = float(row.get("unit_price") or 0)
-        subtotal = unit * qty
+        item_col, qty_col, remove_col = st.columns([3, 1, 1])
+        with item_col:
+            st.write(f"**{row.get('name')}** — {unit:g} جنيه للقطعة")
+        with qty_col:
+            qty = st.number_input("الكمية", min_value=1, max_value=99, value=max(1, int(item.get("qty", 1))), step=1, key=f"cart_qty_{product_id}")
+        with remove_col:
+            remove_item = st.button("حذف", key=f"cart_remove_{product_id}")
+        if remove_item:
+            del st.session_state.store_cart[product_id]
+            st.rerun()
+        st.session_state.store_cart[product_id]["qty"] = int(qty)
+        subtotal = unit * int(qty)
         total += subtotal
-        lines.append(f"- {row.get('name')} × {qty} = {subtotal:g} جنيه")
-        st.write(f"{row.get('name')} — {qty} × {unit:g} = **{subtotal:g} جنيه**")
+        lines.append(f"- {row.get('name')} × {int(qty)} = {subtotal:g} جنيه")
     st.markdown(f"### الإجمالي: {total:g} جنيه")
     name = st.text_input("اسمك", key="store_customer_name")
     phone = st.text_input("رقم الهاتف", key="store_customer_phone")
@@ -430,12 +450,12 @@ def render_tab_radar(current_channels):
     date_from = st.date_input("التاريخ من", value=__import__('datetime').date.today(), key="radar_date_from") if source_rule == "من تاريخ" else None
     marker_text = st.text_input("نص علامة البداية", placeholder="مثال: ابدأ من هنا", key="radar_marker_text") if source_rule == "بعد رسالة تحتوي على نص" else ""
     allowed_forwarders_text = st.text_area("أسماء المصادر/المعلنين المسموح بهم (اختياري)", height=70, key="radar_allowed_forwarders", help="اكتب اسم المعلن كما يظهر في تيليجرام، كل اسم في سطر. اتركه فارغًا لاستبعاد أي منشور Forward.")
-    exclude_forwarded = st.checkbox("استبعاد أي منشور منقول من معلن غير موجود بالقائمة", value=True, key="radar_exclude_forwarded")
-    rounding = st.checkbox("تقريب السعر لأقرب 5 (2.5 أو أقل للأسفل، أكبر من 2.5 للأعلى)", value=True, key="radar_rounding")
+    exclude_forwarded = st.checkbox("استبعاد أي منشور منقول من معلن غير موجود بالقائمة", key="radar_exclude_forwarded")
+    rounding = st.checkbox("تقريب السعر لأقرب 5 (2.5 أو أقل للأسفل، أكبر من 2.5 للأعلى)", key="radar_rounding")
 
     st.markdown("### بعد مراجعة المنتجات")
-    review_required = st.checkbox("مراجعة يدوية لكل منتج قبل الاعتماد", value=True, key="radar_review_required")
-    auto_publish_enabled = st.checkbox("السماح بالنشر التلقائي بعد الضغط على زر النشر", value=False, key="radar_auto_publish")
+    review_required = st.checkbox("مراجعة يدوية لكل منتج قبل الاعتماد", key="radar_review_required")
+    auto_publish_enabled = st.checkbox("السماح بالنشر التلقائي بعد الضغط على زر النشر", key="radar_auto_publish")
     publish_channel = st.text_input("قناة النشر الاختيارية", placeholder="@my_channel", key="radar_publish_channel")
 
     if "radar_products" not in st.session_state:
