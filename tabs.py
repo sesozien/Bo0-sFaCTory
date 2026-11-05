@@ -14,7 +14,7 @@ import yt_dlp
 
 import config
 import utils
-from image_text_tools import cleanup_text_from_image
+from image_text_tools import cleanup_text_from_image, remove_text_from_image
 
 
 def render_tab_video(chosen_size, logo_position_choice, logo_offset_x, logo_offset_y, logo_opacity, logo_custom_w, logo_custom_h, audio_mode, uploaded_custom_audio):
@@ -270,16 +270,30 @@ def render_tab_images(blur_bg_opt, blur_intensity_val, logo_opacity, fit_auto_lo
     ad_template = st.text_area("اسطمبة الإعلان اليدوية (اختياري):", placeholder="مثال: {المنتج} — جودة عالية، اطلب الآن...", key="ad_template")
     with st.expander("📝 تحسين قراءة النص داخل الصورة", expanded=False):
         st.caption("أداة Copilot احتياطية لتحسين وضوح النص في نسخة منفصلة، ولا تغيّر الصورة الأصلية.")
-        if st.button("تحسين النص الآن", key="cleanup_image_text"):
-            cleaned_bytes = cleanup_text_from_image(uploaded_images[0].getvalue())
-            if cleaned_bytes:
-                st.session_state.cleaned_text_image = cleaned_bytes
-                st.success("تم إنشاء نسخة محسّنة للمعاينة")
-            else:
-                st.error("تعذر قراءة الصورة")
+        st.caption("مسح الكلام آليًا مناسب للنص الواضح فوق خلفية بسيطة، وقد يحتاج مراجعة يدوية في الصور المزدحمة.")
+        clean_col, remove_col = st.columns(2)
+        with clean_col:
+            if st.button("تحسين قراءة النص", key="cleanup_image_text"):
+                cleaned_bytes = cleanup_text_from_image(uploaded_images[0].getvalue())
+                if cleaned_bytes:
+                    st.session_state.cleaned_text_image = cleaned_bytes
+                    st.success("تم إنشاء نسخة محسّنة للقراءة")
+                else:
+                    st.error("تعذر قراءة الصورة")
+        with remove_col:
+            if st.button("مسح الكلام فعليًا", key="remove_image_text"):
+                removed_bytes = remove_text_from_image(uploaded_images[0].getvalue())
+                if removed_bytes:
+                    st.session_state.removed_text_image = removed_bytes
+                    st.success("تم إنشاء نسخة بعد مسح النص")
+                else:
+                    st.error("تعذر إزالة النص من الصورة")
         if st.session_state.get("cleaned_text_image"):
-            st.image(st.session_state.cleaned_text_image, caption="نسخة تحسين النص", use_container_width=True)
-            st.download_button("تنزيل نسخة تحسين النص", data=st.session_state.cleaned_text_image, file_name="text-enhanced.png", mime="image/png", key="download_cleaned_text")
+            st.image(st.session_state.cleaned_text_image, caption="نسخة تحسين القراءة — النص موجود", use_container_width=True)
+            st.download_button("تنزيل نسخة تحسين القراءة", data=st.session_state.cleaned_text_image, file_name="text-enhanced.png", mime="image/png", key="download_cleaned_text")
+        if st.session_state.get("removed_text_image"):
+            st.image(st.session_state.removed_text_image, caption="نسخة مسح الكلام", use_container_width=True)
+            st.download_button("تنزيل نسخة مسح الكلام", data=st.session_state.removed_text_image, file_name="text-removed.png", mime="image/png", key="download_removed_text")
     ad_col1, ad_col2 = st.columns(2)
     with ad_col1:
         if st.button("🔥 جلب هاشتاجات اليوم", key="fetch_trending_tags"):
@@ -459,8 +473,9 @@ def render_tab_radar(current_channels):
                     for product in found:
                         unique[product['id']] = product
                     st.session_state.radar_products = list(unique.values())
-                    for idx in range(len(st.session_state.radar_products)):
-                        st.session_state[f'radar_approved_{idx}'] = False
+                    for product in st.session_state.radar_products:
+                        product.setdefault("id", uuid.uuid4().hex)
+                        st.session_state[f"radar_approved_{product['id']}"] = False
                     st.success(f"تم العثور على {len(st.session_state.radar_products)} منتجًا. راجعها قبل التصدير أو النشر.")
                 except Exception as exc:
                     st.error(f"تعذر فحص القنوات: {exc}")
@@ -478,9 +493,10 @@ def render_tab_radar(current_channels):
 
     st.markdown(f"### المنتجات المكتشفة ({len(products)})")
     if st.button("✅ تحديد كل المنتجات للمراجعة", key="radar_approve_all"):
-        for idx in range(len(products)):
-            products[idx]['approved'] = True
-            st.session_state[f'radar_approved_{idx}'] = True
+        for product in products:
+            product.setdefault("id", uuid.uuid4().hex)
+            product['approved'] = True
+            st.session_state[f"radar_approved_{product['id']}"] = True
         st.rerun()
 
     for index, product in enumerate(products):
@@ -497,7 +513,8 @@ def render_tab_radar(current_channels):
                 st.caption(f"المصدر: @{product.get('source_channel', '')}")
                 st.caption(f"التاريخ: {product.get('source_date', '') or 'غير متاح'}")
             if review_required:
-                approval_key = f'radar_approved_{index}'
+                product.setdefault("id", uuid.uuid4().hex)
+                approval_key = f"radar_approved_{product['id']}"
                 if approval_key not in st.session_state:
                     st.session_state[approval_key] = bool(product.get('approved', False))
                 product['approved'] = st.checkbox("أوافق على اعتماد هذا المنتج", key=approval_key)
