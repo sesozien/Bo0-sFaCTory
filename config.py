@@ -23,6 +23,7 @@ CATALOG_FILE = "catalog.json"
 CATEGORIES_FILE = "catalog_categories.json"
 CATALOG_IMAGES_DIR = "catalog_images"
 CUSTOMER_WHATSAPP_NUMBER = os.getenv("CUSTOMER_WHATSAPP_NUMBER", "201125316241")
+STORE_PUBLIC_URL = os.getenv("STORE_PUBLIC_URL", "").strip().rstrip("/")
 os.makedirs(CATALOG_IMAGES_DIR, exist_ok=True)
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "ضع_التوكن_الافتراضي_هنا")

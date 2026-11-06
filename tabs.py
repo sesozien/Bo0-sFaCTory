@@ -381,6 +381,12 @@ def render_tab_store():
     if not all_rows:
         st.info("المتجر لسه مستني منتجات معتمدة من تبويب الصور والمنتجات.")
         return
+    public_url = config.STORE_PUBLIC_URL
+    if not public_url:
+        headers = getattr(st.context, "headers", {})
+        host = headers.get("X-Forwarded-Host") or headers.get("Host")
+        proto = headers.get("X-Forwarded-Proto", "https")
+        public_url = f"{proto}://{host}" if host else ""
     categories = ["الكل"] + list(dict.fromkeys(row.get("type", "أخرى") for row in all_rows))
     col1, col2 = st.columns([2, 1])
     with col1:
@@ -396,6 +402,19 @@ def render_tab_store():
     st.markdown(f"### المنتجات المتاحة ({len(visible)})")
     for index, row in enumerate(visible):
         product_id = str(row.get("id") or row.get("image_path") or row.get("name") or index)
+        product_url = f"{public_url}?product_id={quote(product_id)}" if public_url else "رابط المتجر العام"
+        product_price = float(row.get("unit_price") or 0)
+        hashtag_name = re.sub(r"[^\w\u0600-\u06FF]+", "_", str(row.get("name"))).strip("_")
+        share_text = (
+            f"🛍️ {row.get('name')}\n"
+            f"💰 السعر: {product_price:g} جنيه\n"
+            f"📦 القسم: {row.get('type', 'أخرى')}\n"
+            f"📝 {row.get('notes') or 'منتج مميز'}\n"
+            f"🔗 رابط المنتج: {product_url}\n"
+            f"💬 واتساب: https://wa.me/{config.CUSTOMER_WHATSAPP_NUMBER}\n"
+            f"📱 كتالوج واتساب: https://wa.me/c/201125316241\n\n"
+            f"#منتجك #اختارها_واطلبها #{hashtag_name}"
+        )
         with st.container(border=True):
             left, right = st.columns([1, 2])
             with left:
@@ -408,9 +427,22 @@ def render_tab_store():
                 st.markdown(f"### {row.get('name')}")
                 st.caption(f"القسم: {row.get('type', 'أخرى')}")
                 st.write(row.get("notes") or "منتج مميز")
-                st.markdown(f"**{float(row.get('unit_price') or 0):g} جنيه للقطعة**")
-                quick_message = f"مرحبًا، عايز أعرف تفاصيل منتج: {row.get('name')} — السعر المعلن: {float(row.get('unit_price') or 0):g} جنيه"
+                st.markdown(f"**{product_price:g} جنيه للقطعة**")
+                quick_message = f"مرحبًا، عايز أعرف تفاصيل منتج: {row.get('name')} — السعر المعلن: {product_price:g} جنيه"
                 st.link_button("💬 اسأل عن المنتج على واتساب", f"https://wa.me/{config.CUSTOMER_WHATSAPP_NUMBER}?text={quote(quick_message)}")
+                with st.expander("📣 مشاركة المنتج على السوشيال"):
+                    st.text_area("النص الجاهز للنسخ:", value=share_text, height=190, key=f"share_text_{product_id}")
+                    share_encoded = quote(share_text)
+                    share_col1, share_col2, share_col3 = st.columns(3)
+                    with share_col1:
+                        st.link_button("واتساب", f"https://wa.me/?text={share_encoded}")
+                    with share_col2:
+                        st.link_button("تليجرام", f"https://t.me/share/url?url={quote(product_url)}&text={share_encoded}")
+                    with share_col3:
+                        st.link_button("فيسبوك", f"https://www.facebook.com/sharer/sharer.php?u={quote(product_url)}")
+                    st.link_button("إكس / Twitter", f"https://twitter.com/intent/tweet?text={share_encoded}&url={quote(product_url)}")
+                    st.download_button("تنزيل نص المشاركة", data=share_text, file_name=f"share-{product_id}.txt", mime="text/plain", key=f"share_download_{product_id}")
+                    st.caption("إنستجرام لا يوفر رابط مشاركة ويب يملأ المنشور تلقائيًا؛ انسخ النص والصورة وانشرهما من التطبيق.")
                 qty = st.number_input("الكمية", min_value=0, max_value=99, value=0, step=1, key=f"store_qty_{product_id}")
                 if st.button("🛒 أضف للسلة", key=f"store_add_{product_id}"):
                     if qty < 1:
