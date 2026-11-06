@@ -5,6 +5,35 @@ import numpy as np
 from PIL import Image, ImageFilter, ImageOps
 
 
+def extract_product_from_image(file_bytes, left, top, right, bottom):
+    """Extract the product inside a user-selected rectangle as a transparent PNG."""
+    try:
+        source = np.frombuffer(file_bytes, dtype=np.uint8)
+        image = cv2.imdecode(source, cv2.IMREAD_COLOR)
+        if image is None or image.size == 0:
+            return None
+        height, width = image.shape[:2]
+        left = max(0, min(int(left), width - 2))
+        top = max(0, min(int(top), height - 2))
+        right = max(left + 2, min(int(right), width))
+        bottom = max(top + 2, min(int(bottom), height))
+        rect = (left, top, right - left, bottom - top)
+        mask = np.zeros((height, width), np.uint8)
+        bgd_model = np.zeros((1, 65), np.float64)
+        fgd_model = np.zeros((1, 65), np.float64)
+        cv2.grabCut(image, mask, rect, bgd_model, fgd_model, 6, cv2.GC_INIT_WITH_RECT)
+        foreground = np.where((mask == cv2.GC_FGD) | (mask == cv2.GC_PR_FGD), 255, 0).astype(np.uint8)
+        foreground = cv2.morphologyEx(foreground, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+        foreground = cv2.morphologyEx(foreground, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+        rgba = cv2.cvtColor(image, cv2.COLOR_BGR2BGRA)
+        rgba[:, :, 3] = foreground
+        cropped = rgba[top:bottom, left:right]
+        ok, encoded = cv2.imencode(".png", cropped)
+        return encoded.tobytes() if ok else None
+    except Exception:
+        return None
+
+
 def remove_text_from_image(file_bytes):
     """Remove high-contrast text approximately with OpenCV inpainting.
 

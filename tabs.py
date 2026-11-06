@@ -8,13 +8,14 @@ from urllib.parse import quote
 import requests
 import streamlit as st
 from bs4 import BeautifulSoup
+from PIL import Image
 from moviepy.editor import AudioFileClip, CompositeVideoClip, ImageClip, VideoFileClip, concatenate_videoclips as concat_videoclips
 import moviepy.video.fx.all as vfx
 import yt_dlp
 
 import config
 import utils
-from image_text_tools import cleanup_text_from_image, remove_text_from_image
+from image_text_tools import cleanup_text_from_image, extract_product_from_image, remove_text_from_image
 
 
 def render_tab_video(chosen_size, logo_position_choice, logo_offset_x, logo_offset_y, logo_opacity, logo_custom_w, logo_custom_h, audio_mode, uploaded_custom_audio):
@@ -268,6 +269,38 @@ def render_tab_images(blur_bg_opt, blur_intensity_val, logo_opacity, fit_auto_lo
             st.warning("المفتاح غير مقروء. أضف OPENAI_API_KEY في Streamlit → Settings → Secrets، بدون علامات اقتباس إضافية.")
     ad_details = st.text_input("اسم المنتج أو تفاصيله:", key="ad_details")
     ad_template = st.text_area("اسطمبة الإعلان اليدوية (اختياري):", placeholder="مثال: {المنتج} — جودة عالية، اطلب الآن...", key="ad_template")
+    with st.expander("✂️ استخراج البضاعة من الصورة (مثل Canva Background Remover / Magic Grab)", expanded=False):
+        st.caption("حدد مستطيلًا يحيط بالمنتج فقط. سيتم عزل المنتج بخلفية شفافة، والصورة الأصلية لن تتغير.")
+        try:
+            preview = Image.open(io.BytesIO(uploaded_images[0].getvalue()))
+            image_width, image_height = preview.size
+            st.image(preview, caption=f"الأبعاد: {image_width} × {image_height}", width="stretch")
+            st.session_state.setdefault("extract_left", 0)
+            st.session_state.setdefault("extract_top", 0)
+            st.session_state.setdefault("extract_right", image_width)
+            st.session_state.setdefault("extract_bottom", image_height)
+            x1, x2 = st.columns(2)
+            with x1:
+                extract_left = st.slider("بداية المنتج من اليسار", 0, max(1, image_width - 1), key="extract_left")
+                extract_top = st.slider("بداية المنتج من الأعلى", 0, max(1, image_height - 1), key="extract_top")
+            with x2:
+                extract_right = st.slider("نهاية المنتج من اليمين", 1, image_width, key="extract_right")
+                extract_bottom = st.slider("نهاية المنتج من الأسفل", 1, image_height, key="extract_bottom")
+            if st.button("✨ استخراج المنتج بخلفية شفافة", key="extract_product_button"):
+                if extract_right <= extract_left or extract_bottom <= extract_top:
+                    st.error("خلي نهاية المستطيل بعد بدايته.")
+                else:
+                    extracted = extract_product_from_image(uploaded_images[0].getvalue(), extract_left, extract_top, extract_right, extract_bottom)
+                    if extracted:
+                        st.session_state.extracted_product_image = extracted
+                        st.success("تم عزل المنتج — راجع النتيجة قبل إضافتها للكتالوج.")
+                    else:
+                        st.error("لم نقدر نعزل المنتج من المنطقة المحددة. وسّع المستطيل حول المنتج وجرب مرة ثانية.")
+            if st.session_state.get("extracted_product_image"):
+                st.image(st.session_state.extracted_product_image, caption="المنتج المعزول بخلفية شفافة", width="stretch")
+                st.download_button("تنزيل صورة المنتج المعزولة", data=st.session_state.extracted_product_image, file_name="product-cutout.png", mime="image/png", key="download_extracted_product")
+        except Exception:
+            st.error("تعذر قراءة الصورة لتحديد منطقة المنتج.")
     with st.expander("📝 تحسين قراءة النص داخل الصورة", expanded=False):
         st.caption("أداة Copilot احتياطية لتحسين وضوح النص في نسخة منفصلة، ولا تغيّر الصورة الأصلية.")
         st.caption("مسح الكلام آليًا مناسب للنص الواضح فوق خلفية بسيطة، وقد يحتاج مراجعة يدوية في الصور المزدحمة.")
