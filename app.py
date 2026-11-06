@@ -135,8 +135,9 @@ def render_sidebar():
         logo_ox = st.slider("الإحداثي الأفقي (X):", -1000, 1000, key="l_ox")
         logo_oy = st.slider("الإحداثي الرأسي (Y):", -1000, 1000, key="l_oy")
         logo_opacity = st.slider("شفافية اللوجو:", 0.1, 1.0, key="l_op")
-        fit_auto_logo = st.checkbox("تكيف اللوجو التلقائي (Auto Fit)", key="logo_fit_auto", on_change=_save_settings_on_change, help="يحوّل العرض والارتفاع إلى مقاس نسبي من أبعاد الصورة.")
-        remove_logo_bg = st.checkbox("🫥 إزالة الخلفية البيضاء للوجو تلقائياً", key="rem_bg_chk", on_change=_save_settings_on_change, help="يمسح الخلفية المتصلة بحواف اللوجو ويحافظ على التفاصيل الداخلية.")
+        fit_auto_logo = st.checkbox("تكيف اللوجو التلقائي (Auto Fit)", key="logo_fit_auto", on_change=_save_settings_on_change)
+        remove_logo_bg = st.checkbox("🫥 إزالة الخلفية البيضاء للوجو تلقائياً", key="rem_bg_chk", on_change=_save_settings_on_change)
+        st.caption("Auto Fit يجعل حجم اللوجو نسبيًا للصورة، وإزالة الخلفية تزيل الأبيض المتصل بالحواف فقط.")
         logo_w = st.slider("عرض اللوجو (px):", 10, 1000, key="logo_w")
         logo_h = st.slider("ارتفاع اللوجو (px):", 10, 1000, key="logo_h")
         if utils.ensure_valid_image(config.ACTIVE_LOGO_PATH):
@@ -164,12 +165,13 @@ def render_sidebar():
         extra_cl = st.color_picker("لون خط الجملة:", key="e_cl")
 
         st.write("---")
-        blur_bg = st.checkbox("تفعيل خلفية Blur", key="blur_bg", on_change=_save_settings_on_change, help="يضع نسخة ضبابية من الصورة كخلفية ويضع المنتج واضحًا فوقها.")
+        blur_bg = st.checkbox("تفعيل خلفية Blur", key="blur_bg", on_change=_save_settings_on_change)
         blur_val = st.slider("قوة التغبيش (Blur):", 1, 30, key="blur_val")
-        enhance = st.checkbox("تفعيل فلتر الجودة والحدة", key="enhance_opt", on_change=_save_settings_on_change, help="يفعّل تحسين التباين والحدة قبل إضافة اللوجو والنص.")
+        enhance = st.checkbox("تفعيل فلتر الجودة والحدة", key="enhance_opt", on_change=_save_settings_on_change)
         sharp = st.slider("حدة التفاصيل:", 0.0, 5.0, key="sharp_val")
         quality = st.slider("جودة الضغط (%):", 10, 100, key="q_val")
-        enable_crop = st.checkbox("✂️ تفعيل قص أطراف الصور (Crop)", key="enable_crop", on_change=_save_settings_on_change, help="لا يُطبّق القص إلا بعد تفعيل هذا الاختيار.")
+        enable_crop = st.checkbox("✂️ تفعيل قص أطراف الصور (Crop)", key="enable_crop", on_change=_save_settings_on_change)
+        st.caption("Blur يضيف خلفية ضبابية، وفلتر الجودة يحسن الحدة والتباين، والقص يعمل فقط عند تفعيله.")
         crop = [st.slider(label, 0, 500, key=key) for label, key in [("قص يسار:", "c_l"), ("قص أعلى:", "c_t"), ("قص يمين:", "c_r"), ("قص أسفل:", "c_b")]] if enable_crop else [0, 0, 0, 0]
         audio_mode = st.radio("مصدر الصوت:", ["تراك المزيكا الحصري التلقائي", "رفع تراك أوديو MP3 مخصص من جهازك"], key="audio_mode")
         custom_audio = st.file_uploader("ارفع الأوديو:", type=["mp3", "wav", "ogg"], key="custom_audio") if audio_mode.startswith("رفع") else None
