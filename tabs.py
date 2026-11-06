@@ -375,6 +375,8 @@ def render_tab_store():
     """Simple customer-facing catalog: browse, cart, and handoff to WhatsApp."""
     st.markdown("# 🛍️ اختارها واطلبها")
     st.caption("اختار المنتج، ضيفه للسلة، وابعت طلبك على واتساب بدون تسجيل أو دفع إلكتروني.")
+    direct_message = "مرحبًا، عايز أستفسر عن المنتجات والأسعار المتاحة."
+    st.link_button("💬 تواصل مباشر على واتساب", f"https://wa.me/{config.CUSTOMER_WHATSAPP_NUMBER}?text={quote(direct_message)}")
     all_rows = [row for row in config.load_catalog() if row.get("approved") and row.get("name")]
     if not all_rows:
         st.info("المتجر لسه مستني منتجات معتمدة من تبويب الصور والمنتجات.")
@@ -407,6 +409,8 @@ def render_tab_store():
                 st.caption(f"القسم: {row.get('type', 'أخرى')}")
                 st.write(row.get("notes") or "منتج مميز")
                 st.markdown(f"**{float(row.get('unit_price') or 0):g} جنيه للقطعة**")
+                quick_message = f"مرحبًا، عايز أعرف تفاصيل منتج: {row.get('name')} — السعر المعلن: {float(row.get('unit_price') or 0):g} جنيه"
+                st.link_button("💬 اسأل عن المنتج على واتساب", f"https://wa.me/{config.CUSTOMER_WHATSAPP_NUMBER}?text={quote(quick_message)}")
                 qty = st.number_input("الكمية", min_value=0, max_value=99, value=0, step=1, key=f"store_qty_{product_id}")
                 if st.button("🛒 أضف للسلة", key=f"store_add_{product_id}"):
                     if qty < 1:
