@@ -292,14 +292,15 @@ def render_tab_images(blur_bg_opt, blur_intensity_val, logo_opacity, fit_auto_lo
         return
 
     st.markdown("### 📣 إعلان المنتج من الصورة")
-    st.caption("اكتب تفاصيل أو اسطمبة اختيارية. سيقرأ النظام الصورة عند ضبط مفتاح OpenAI في Streamlit Secrets، وإلا سيستخدم القالب المحلي.")
+    st.caption("اكتب تفاصيل أو اسطمبة اختيارية. سيقرأ النظام الصورة عبر OpenAI أو Claude حسب إعدادات Secrets، وإلا سيستخدم القالب المحلي.")
     ai_status = utils.openai_status()
-    with st.expander("🔐 حالة اتصال OpenAI", expanded=False):
+    with st.expander("🔐 حالة اتصال نموذج الرؤية", expanded=False):
         if ai_status["configured"]:
-            st.success(f"المفتاح مقروء من Secrets/البيئة — النموذج: {ai_status['model']}")
+            provider_name = "Anthropic Claude" if ai_status.get("provider") == "anthropic" else "OpenAI"
+            st.success(f"المفتاح مقروء — المزود: {provider_name} — النموذج: {ai_status['model']}")
             st.caption(f"العنوان: {ai_status['base']}")
         else:
-            st.warning("المفتاح غير مقروء. أضف OPENAI_API_KEY في Streamlit → Settings → Secrets، بدون علامات اقتباس إضافية.")
+            st.warning("المفتاح غير مقروء. أضف OPENAI_API_KEY أو ANTHROPIC_API_KEY في Streamlit → Settings → Secrets.")
     ad_details = st.text_input("اسم المنتج أو تفاصيله:", key="ad_details")
     ad_template = st.text_area("اسطمبة الإعلان اليدوية (اختياري):", placeholder="مثال: {المنتج} — جودة عالية، اطلب الآن...", key="ad_template")
     with st.expander("✂️ استخراج البضاعة من الصورة (مثل Canva Background Remover / Magic Grab)", expanded=False):
@@ -374,7 +375,7 @@ def render_tab_images(blur_bg_opt, blur_intensity_val, logo_opacity, fit_auto_lo
         st.session_state.generated_ad_text = ""
     if st.session_state.generated_ad_text:
         if not st.session_state.get("generated_ad_vision", False):
-            st.warning("تم استخدام القالب المحلي. راجع حالة OpenAI أعلى القسم وتأكد من إضافة OPENAI_API_KEY في Secrets.")
+            st.warning("تم استخدام القالب المحلي. راجع حالة نموذج الرؤية أعلى القسم وتأكد من إضافة مفتاح المزود في Secrets.")
         st.text_area("البوست الإعلاني الجاهز للتعديل والنسخ:", key="generated_ad_text", height=220)
     if st.session_state.get("trending_hashtags"):
         st.caption("هاشتاجات اليوم: " + " ".join(st.session_state.trending_hashtags))

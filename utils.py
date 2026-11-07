@@ -625,7 +625,7 @@ def _runtime_secret(name, *aliases):
                 value = None
             if value:
                 return str(value).strip()
-        for section_name in ("openai", "OPENAI"):
+        for section_name in ("openai", "OPENAI", "anthropic", "ANTHROPIC"):
             try:
                 section = st.secrets.get(section_name, {})
                 if isinstance(section, dict):
@@ -643,11 +643,85 @@ def _runtime_secret(name, *aliases):
     return ""
 
 
+def vision_status():
+    """Return the selected image model configuration without exposing secrets."""
+    requested = _runtime_secret("AI_VISION_PROVIDER", "VISION_PROVIDER").lower()
+    openai_key = _runtime_secret("OPENAI_API_KEY", "OPENAI_KEY")
+    anthropic_key = _runtime_secret("ANTHROPIC_API_KEY", "CLAUDE_API_KEY")
+    if requested in {"anthropic", "claude"}:
+        provider = "anthropic"
+    elif requested == "openai":
+        provider = "openai"
+    elif anthropic_key and not openai_key:
+        provider = "anthropic"
+    else:
+        provider = "openai"
+    if provider == "anthropic":
+        return {
+            "provider": "anthropic", "configured": bool(anthropic_key),
+            "base": _runtime_secret("ANTHROPIC_API_BASE") or "https://api.anthropic.com/v1",
+            "model": _runtime_secret("ANTHROPIC_VISION_MODEL", "CLAUDE_VISION_MODEL") or "claude-3-5-sonnet-20241022",
+        }
+    return {
+        "provider": "openai", "configured": bool(openai_key),
+        "base": _runtime_secret("OPENAI_API_BASE") or "https://api.openai.com/v1",
+        "model": _runtime_secret("OPENAI_VISION_MODEL", "OPENAI_MODEL") or "gpt-4o-mini",
+    }
+
+
 def openai_status():
-    key = _runtime_secret("OPENAI_API_KEY", "OPENAI_KEY")
-    base = _runtime_secret("OPENAI_API_BASE") or "https://api.openai.com/v1"
-    model = _runtime_secret("OPENAI_VISION_MODEL", "OPENAI_MODEL") or "gpt-4o-mini"
-    return {"configured": bool(key), "base": base, "model": model}
+    """Backward-compatible status name used by older UI code."""
+    return vision_status()
+
+
+def _image_media_type(image_bytes):
+    if image_bytes.startswith(b"\x89PNG"):
+        return "image/png"
+    if image_bytes.startswith(b"GIF8"):
+        return "image/gif"
+    if image_bytes.startswith(b"RIFF") and b"WEBP" in image_bytes[:16]:
+        return "image/webp"
+    return "image/jpeg"
+
+
+def _vision_request(image_bytes, prompt, max_tokens=500):
+    """Send one image prompt to OpenAI or Claude using their native request shape."""
+    status = vision_status()
+    if not status["configured"]:
+        return "", False, status
+    encoded = base64.b64encode(image_bytes).decode("ascii")
+    media_type = _image_media_type(image_bytes)
+    if status["provider"] == "anthropic":
+        api_key = _runtime_secret("ANTHROPIC_API_KEY", "CLAUDE_API_KEY")
+        payload = {"model": status["model"], "max_tokens": max_tokens, "temperature": 0,
+                   "messages": [{"role": "user", "content": [
+                       {"type": "text", "text": prompt},
+                       {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": encoded}},
+                   ]}]}
+        response = requests.post(
+            f"{status['base'].rstrip('/')}/messages",
+            headers={"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
+            json=payload, timeout=60,
+        )
+        response.raise_for_status()
+        blocks = response.json().get("content", [])
+        text = "\n".join(block.get("text", "") for block in blocks if block.get("type") == "text").strip()
+    else:
+        api_key = _runtime_secret("OPENAI_API_KEY", "OPENAI_KEY")
+        payload = {"model": status["model"], "messages": [{"role": "user", "content": [
+            {"type": "text", "text": prompt},
+            {"type": "image_url", "image_url": {"url": f"data:{media_type};base64,{encoded}"}},
+        ]}], "max_tokens": max_tokens, "temperature": 0}
+        response = requests.post(
+            f"{status['base'].rstrip('/')}/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json=payload, timeout=60,
+        )
+        response.raise_for_status()
+        text = response.json()["choices"][0]["message"]["content"].strip()
+    if not text:
+        raise ValueError("empty vision response")
+    return text, True, status
 
 
 def generate_auto_hashtags(product_name, extra_hashtags=None):
@@ -664,19 +738,12 @@ def generate_product_ad(image_bytes, manual_template="", extra_details="", hasht
     Without a key, return a useful template-based ad instead of failing the app.
     """
     tags = generate_auto_hashtags(extra_details or "منتج", hashtags)
-    status = openai_status()
-    api_key = _runtime_secret("OPENAI_API_KEY", "OPENAI_KEY")
-    if api_key and image_bytes:
+    if image_bytes and vision_status()["configured"]:
         try:
-            encoded = base64.b64encode(image_bytes).decode("ascii")
-            base_url = status["base"].rstrip("/")
             prompt = ("اكتب إعلانًا مصريًا جذابًا بالعربية لهذا المنتج. اقرأ تفاصيل الصورة بدون اختراع مواصفات غير واضحة. "
                       "استخدم القالب اليدوي إن وُجد، واجعل النص مناسبًا لمنشور بيع قصير مع عنوان وفوائد ودعوة للشراء. "
                       f"تفاصيل يدوية: {extra_details or 'لا توجد'}\nالقالب اليدوي: {manual_template or 'اكتب بأسلوبك'}")
-            payload = {"model": status["model"], "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{encoded}"}}]}], "max_tokens": 500}
-            response = requests.post(f"{base_url}/chat/completions", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json=payload, timeout=45)
-            response.raise_for_status()
-            text = response.json()["choices"][0]["message"]["content"].strip()
+            text, _, _ = _vision_request(image_bytes, prompt, max_tokens=500)
             return f"{text}\n\n{tags}", True
         except (requests.RequestException, KeyError, TypeError, ValueError):
             pass
@@ -694,12 +761,10 @@ def extract_product_details_from_image(image_bytes, filename="", manual_hint="")
     }
     if not image_bytes:
         return empty, False, "لم تصل صورة للتحليل."
-    status = openai_status()
-    api_key = _runtime_secret("OPENAI_API_KEY", "OPENAI_KEY")
-    if not api_key:
-        return empty, False, "أضف OPENAI_API_KEY في Streamlit Secrets لتفعيل الاستخراج التلقائي."
+    status = vision_status()
+    if not status["configured"]:
+        return empty, False, "أضف مفتاح المزود المختار في Streamlit Secrets: OPENAI_API_KEY أو ANTHROPIC_API_KEY."
     try:
-        encoded = base64.b64encode(image_bytes).decode("ascii")
         prompt = """أنت مساعد إدخال كتالوج لمتجر مصري. اقرأ صورة المنتج واستخرج البيانات الظاهرة فقط، ولا تخترع مواصفات غير مقروءة.
 أعد JSON صالحًا فقط بدون Markdown أو شرح، بالمفاتيح التالية حرفيًا:
 {"name":"اسم مختصر للمنتج","type":"أقرب تصنيف من: توك، اكسسوار، أدوات منزلية، رفايع مطبخ، مكياجات، خردوات، أدوات مدرسية، بلاستيكات","case_price":0,"pack_count":1,"unit_price":0,"notes":"المقاسات والألوان والخامة وأي تفاصيل ظاهرة","confidence":"high أو medium أو low"}
@@ -708,18 +773,7 @@ def extract_product_details_from_image(image_bytes, filename="", manual_hint="")
             prompt += f"\nمعلومة إضافية من المستخدم: {manual_hint[:500]}"
         if filename:
             prompt += f"\nاسم الملف للاستئناس فقط: {filename}"
-        payload = {"model": status["model"], "messages": [{"role": "user", "content": [
-            {"type": "text", "text": prompt},
-            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{encoded}"}},
-        ]}], "max_tokens": 500, "temperature": 0}
-        response = requests.post(
-            f"{status['base'].rstrip('/')}/chat/completions",
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json=payload,
-            timeout=60,
-        )
-        response.raise_for_status()
-        raw = response.json()["choices"][0]["message"]["content"].strip()
+        raw, _, _ = _vision_request(image_bytes, prompt, max_tokens=500)
         raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.IGNORECASE).strip()
         parsed = json.loads(raw)
         if not isinstance(parsed, dict):
