@@ -1,4 +1,5 @@
 import csv
+import hashlib
 import io
 import os
 import re
@@ -163,8 +164,40 @@ def render_catalog_panel(processed_images=None):
     with st.expander("➕ إضافة منتج يدوي للكتالوج", expanded=not bool(rows)):
         manual_image = st.file_uploader("صورة المنتج المعدلة", type=["jpg", "jpeg", "png"], key="catalog_manual_image")
         default_name = _clean_product_name(manual_image.name) if manual_image else ""
+        upload_token = hashlib.sha1(manual_image.getvalue()).hexdigest() if manual_image else ""
+        if st.session_state.get("catalog_manual_upload_token") != upload_token:
+            st.session_state.catalog_manual_upload_token = upload_token
+            st.session_state.pop("catalog_ai_draft", None)
+            for key in ("catalog_manual_name", "catalog_manual_type", "catalog_manual_case", "catalog_manual_count", "catalog_manual_notes"):
+                st.session_state.pop(key, None)
+        if manual_image:
+            ai_col, hint_col = st.columns([1, 2])
+            with ai_col:
+                extract_details = st.button("🤖 استخراج التفاصيل من الصورة", key="catalog_extract_details")
+            with hint_col:
+                st.caption("يملأ الاسم والتصنيف والأسعار والمقاسات والألوان تلقائيًا، ثم تراجعها قبل الحفظ.")
+            if extract_details:
+                with st.spinner("جاري قراءة الصورة واستخراج بيانات المنتج..."):
+                    draft, extracted_ok, extraction_message = utils.extract_product_details_from_image(manual_image.getvalue(), manual_image.name, st.session_state.get("catalog_manual_notes", ""))
+                if extracted_ok:
+                    st.session_state.catalog_ai_draft = draft
+                    st.success(extraction_message)
+                    st.rerun()
+                else:
+                    st.warning(extraction_message)
+        draft = st.session_state.get("catalog_ai_draft", {})
+        suggested_type = str(draft.get("type") or "").strip()
+        if suggested_type and suggested_type not in categories:
+            st.caption(f"التصنيف المقروء: {suggested_type} — اختر أقرب تصنيف من القائمة أو أضفه من الشريط الجانبي.")
+        initial_type = suggested_type if suggested_type in categories else categories[0]
+        initial_notes = str(draft.get("notes") or "")
+        st.session_state.setdefault("catalog_manual_name", str(draft.get("name") or default_name))
+        st.session_state.setdefault("catalog_manual_type", initial_type)
+        st.session_state.setdefault("catalog_manual_case", float(draft.get("case_price") or 0))
+        st.session_state.setdefault("catalog_manual_count", max(1, int(draft.get("pack_count") or 1)))
+        st.session_state.setdefault("catalog_manual_notes", initial_notes)
         with st.form("catalog_manual_form", clear_on_submit=False):
-            manual_name = st.text_input("اسم المنتج", value=default_name, key="catalog_manual_name")
+            manual_name = st.text_input("اسم المنتج", key="catalog_manual_name")
             manual_type = st.selectbox("النوع", categories, key="catalog_manual_type")
             manual_case = st.number_input("سعر الدستة", min_value=0.0, step=1.0, key="catalog_manual_case")
             manual_count = st.number_input("عدد العبوة", min_value=1, value=1, step=1, key="catalog_manual_count")

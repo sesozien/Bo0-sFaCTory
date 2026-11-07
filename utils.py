@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import hashlib
@@ -683,6 +684,64 @@ def generate_product_ad(image_bytes, manual_template="", extra_details="", hasht
     template = manual_template.strip() or "🔥 {المنتج}\n\nجودة ممتازة وشكل عملي يناسب استخدامك اليومي.\nللطلب والاستفسار تواصل معنا الآن."
     fallback_text, _ = generate_product_ad_with_secrets(image_bytes, template, title, tags.split())
     return f"{fallback_text}\n\nMr :- Bo0", False
+
+
+def extract_product_details_from_image(image_bytes, filename="", manual_hint=""):
+    """Extract catalog fields from a product image using the configured vision model."""
+    empty = {
+        "name": "", "type": "", "case_price": 0.0, "pack_count": 1,
+        "unit_price": 0.0, "notes": "", "confidence": "low", "source": "manual",
+    }
+    if not image_bytes:
+        return empty, False, "لم تصل صورة للتحليل."
+    status = openai_status()
+    api_key = _runtime_secret("OPENAI_API_KEY", "OPENAI_KEY")
+    if not api_key:
+        return empty, False, "أضف OPENAI_API_KEY في Streamlit Secrets لتفعيل الاستخراج التلقائي."
+    try:
+        encoded = base64.b64encode(image_bytes).decode("ascii")
+        prompt = """أنت مساعد إدخال كتالوج لمتجر مصري. اقرأ صورة المنتج واستخرج البيانات الظاهرة فقط، ولا تخترع مواصفات غير مقروءة.
+أعد JSON صالحًا فقط بدون Markdown أو شرح، بالمفاتيح التالية حرفيًا:
+{"name":"اسم مختصر للمنتج","type":"أقرب تصنيف من: توك، اكسسوار، أدوات منزلية، رفايع مطبخ، مكياجات، خردوات، أدوات مدرسية، بلاستيكات","case_price":0,"pack_count":1,"unit_price":0,"notes":"المقاسات والألوان والخامة وأي تفاصيل ظاهرة","confidence":"high أو medium أو low"}
+القواعد: الأسعار أرقام فقط. إذا ظهر سعر قطعة واحد ضعه في unit_price واجعل case_price مساويًا له وpack_count=1. إذا ظهر سعر الدستة/العبوة وعددها، احسب unit_price = case_price / pack_count. لا تضع أرقام الهاتف أو العناوين في الأسعار. إذا لم يظهر حقل استخدم قيمة فارغة أو صفرًا."""
+        if manual_hint:
+            prompt += f"\nمعلومة إضافية من المستخدم: {manual_hint[:500]}"
+        if filename:
+            prompt += f"\nاسم الملف للاستئناس فقط: {filename}"
+        payload = {"model": status["model"], "messages": [{"role": "user", "content": [
+            {"type": "text", "text": prompt},
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{encoded}"}},
+        ]}], "max_tokens": 500, "temperature": 0}
+        response = requests.post(
+            f"{status['base'].rstrip('/')}/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json=payload,
+            timeout=60,
+        )
+        response.raise_for_status()
+        raw = response.json()["choices"][0]["message"]["content"].strip()
+        raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.IGNORECASE).strip()
+        parsed = json.loads(raw)
+        if not isinstance(parsed, dict):
+            raise ValueError("vision response is not an object")
+        case_price = max(0.0, float(parsed.get("case_price") or 0))
+        pack_count = max(1, int(float(parsed.get("pack_count") or 1)))
+        unit_price = max(0.0, float(parsed.get("unit_price") or 0))
+        if not unit_price and case_price:
+            unit_price = case_price / pack_count
+        details = {
+            "name": str(parsed.get("name") or "").strip()[:120],
+            "type": str(parsed.get("type") or "").strip()[:60],
+            "case_price": round(case_price, 2),
+            "pack_count": pack_count,
+            "unit_price": round(unit_price, 2),
+            "notes": str(parsed.get("notes") or "").strip()[:1000],
+            "confidence": str(parsed.get("confidence") or "medium").strip().lower(),
+            "source": "vision",
+        }
+        return details, True, "تم استخراج تفاصيل المنتج من الصورة. راجعها قبل الحفظ."
+    except (requests.RequestException, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        return empty, False, f"تعذر استخراج البيانات تلقائيًا: {exc}"
 
 
 def supplier_code(channel_name):
