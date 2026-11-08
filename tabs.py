@@ -9,7 +9,7 @@ from urllib.parse import quote
 import requests
 import streamlit as st
 from bs4 import BeautifulSoup
-from PIL import Image
+from PIL import Image, ImageDraw
 from moviepy.editor import AudioFileClip, CompositeVideoClip, ImageClip, VideoFileClip, concatenate_videoclips as concat_videoclips
 import moviepy.video.fx.all as vfx
 import yt_dlp
@@ -292,15 +292,15 @@ def render_tab_images(blur_bg_opt, blur_intensity_val, logo_opacity, fit_auto_lo
         return
 
     st.markdown("### 📣 إعلان المنتج من الصورة")
-    st.caption("اكتب تفاصيل أو اسطمبة اختيارية. سيقرأ النظام الصورة عبر OpenAI أو Claude حسب إعدادات Secrets، وإلا سيستخدم القالب المحلي.")
+    st.caption("اكتب تفاصيل أو اسطمبة اختيارية. سيقرأ النظام الصورة عبر Gemini المجاني أو OpenAI، وإلا سيستخدم القالب المحلي.")
     ai_status = utils.openai_status()
     with st.expander("🔐 حالة اتصال نموذج الرؤية", expanded=False):
         if ai_status["configured"]:
-            provider_name = "Anthropic Claude" if ai_status.get("provider") == "anthropic" else "OpenAI"
+            provider_name = {"gemini": "Google Gemini", "anthropic": "Anthropic Claude", "openai": "OpenAI"}.get(ai_status.get("provider"), ai_status.get("provider", ""))
             st.success(f"المفتاح مقروء — المزود: {provider_name} — النموذج: {ai_status['model']}")
             st.caption(f"العنوان: {ai_status['base']}")
         else:
-            st.warning("المفتاح غير مقروء. أضف OPENAI_API_KEY أو ANTHROPIC_API_KEY في Streamlit → Settings → Secrets.")
+            st.warning("المفتاح غير مقروء. أضف GEMINI_API_KEY في Streamlit → Settings → Secrets، أو استخدم OPENAI_API_KEY.")
     ad_details = st.text_input("اسم المنتج أو تفاصيله:", key="ad_details")
     ad_template = st.text_area("اسطمبة الإعلان اليدوية (اختياري):", placeholder="مثال: {المنتج} — جودة عالية، اطلب الآن...", key="ad_template")
     with st.expander("✂️ استخراج البضاعة من الصورة (مثل Canva Background Remover / Magic Grab)", expanded=False):
@@ -308,11 +308,18 @@ def render_tab_images(blur_bg_opt, blur_intensity_val, logo_opacity, fit_auto_lo
         try:
             preview = Image.open(io.BytesIO(uploaded_images[0].getvalue()))
             image_width, image_height = preview.size
-            st.image(preview, caption=f"الأبعاد: {image_width} × {image_height}", width="stretch")
-            st.session_state.setdefault("extract_left", 0)
-            st.session_state.setdefault("extract_top", 0)
-            st.session_state.setdefault("extract_right", image_width)
-            st.session_state.setdefault("extract_bottom", image_height)
+            image_token = hashlib.sha1(uploaded_images[0].getvalue()).hexdigest()
+            if st.session_state.get("extract_image_token") != image_token:
+                st.session_state.extract_image_token = image_token
+                st.session_state.extract_left = 0
+                st.session_state.extract_top = 0
+                st.session_state.extract_right = image_width
+                st.session_state.extract_bottom = image_height
+                st.session_state.pop("extracted_product_image", None)
+            st.session_state.extract_left = max(0, min(int(st.session_state.get("extract_left", 0)), max(0, image_width - 1)))
+            st.session_state.extract_top = max(0, min(int(st.session_state.get("extract_top", 0)), max(0, image_height - 1)))
+            st.session_state.extract_right = max(st.session_state.extract_left + 1, min(int(st.session_state.get("extract_right", image_width)), image_width))
+            st.session_state.extract_bottom = max(st.session_state.extract_top + 1, min(int(st.session_state.get("extract_bottom", image_height)), image_height))
             x1, x2 = st.columns(2)
             with x1:
                 extract_left = st.slider("بداية المنتج من اليسار", 0, max(1, image_width - 1), key="extract_left")
@@ -320,6 +327,17 @@ def render_tab_images(blur_bg_opt, blur_intensity_val, logo_opacity, fit_auto_lo
             with x2:
                 extract_right = st.slider("نهاية المنتج من اليمين", 1, image_width, key="extract_right")
                 extract_bottom = st.slider("نهاية المنتج من الأسفل", 1, image_height, key="extract_bottom")
+            crop_preview = preview.convert("RGB").copy()
+            guide = ImageDraw.Draw(crop_preview)
+            guide_width = max(3, min(image_width, image_height) // 180)
+            guide.line([(extract_left, 0), (extract_left, image_height)], fill=(255, 65, 65), width=guide_width)
+            guide.line([(extract_right, 0), (extract_right, image_height)], fill=(255, 65, 65), width=guide_width)
+            guide.line([(0, extract_top), (image_width, extract_top)], fill=(255, 65, 65), width=guide_width)
+            guide.line([(0, extract_bottom), (image_width, extract_bottom)], fill=(255, 65, 65), width=guide_width)
+            guide.rectangle((extract_left, extract_top, extract_right, extract_bottom), outline=(255, 215, 0), width=guide_width + 2)
+            guide.text((extract_left + 8, extract_top + 8), f"({extract_left},{extract_top}) → ({extract_right},{extract_bottom})", fill=(255, 255, 255), stroke_width=3, stroke_fill=(0, 0, 0))
+            st.image(crop_preview, caption=f"المعاينة الحية — العرض: {extract_right - extract_left}px | الارتفاع: {extract_bottom - extract_top}px", width="stretch")
+            st.caption(f"الخط الأحمر يوضح حدود القص، والإطار الأصفر هو الجزء الذي سيتم عزله. الإحداثيات الحالية: يسار {extract_left}، أعلى {extract_top}، يمين {extract_right}، أسفل {extract_bottom}.")
             if st.button("✨ استخراج المنتج بخلفية شفافة", key="extract_product_button"):
                 if extract_right <= extract_left or extract_bottom <= extract_top:
                     st.error("خلي نهاية المستطيل بعد بدايته.")

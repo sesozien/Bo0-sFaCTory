@@ -625,7 +625,7 @@ def _runtime_secret(name, *aliases):
                 value = None
             if value:
                 return str(value).strip()
-        for section_name in ("openai", "OPENAI", "anthropic", "ANTHROPIC"):
+        for section_name in ("openai", "OPENAI", "anthropic", "ANTHROPIC", "gemini", "GEMINI", "google", "GOOGLE"):
             try:
                 section = st.secrets.get(section_name, {})
                 if isinstance(section, dict):
@@ -648,14 +648,25 @@ def vision_status():
     requested = _runtime_secret("AI_VISION_PROVIDER", "VISION_PROVIDER").lower()
     openai_key = _runtime_secret("OPENAI_API_KEY", "OPENAI_KEY")
     anthropic_key = _runtime_secret("ANTHROPIC_API_KEY", "CLAUDE_API_KEY")
-    if requested in {"anthropic", "claude"}:
+    gemini_key = _runtime_secret("GEMINI_API_KEY", "GOOGLE_API_KEY")
+    if requested in {"gemini", "google"}:
+        provider = "gemini"
+    elif requested in {"anthropic", "claude"}:
         provider = "anthropic"
     elif requested == "openai":
         provider = "openai"
+    elif gemini_key:
+        provider = "gemini"
     elif anthropic_key and not openai_key:
         provider = "anthropic"
     else:
         provider = "openai"
+    if provider == "gemini":
+        return {
+            "provider": "gemini", "configured": bool(gemini_key),
+            "base": _runtime_secret("GEMINI_API_BASE") or "https://generativelanguage.googleapis.com/v1beta",
+            "model": _runtime_secret("GEMINI_VISION_MODEL", "GOOGLE_VISION_MODEL") or "gemini-2.5-flash",
+        }
     if provider == "anthropic":
         return {
             "provider": "anthropic", "configured": bool(anthropic_key),
@@ -691,7 +702,22 @@ def _vision_request(image_bytes, prompt, max_tokens=500):
         return "", False, status
     encoded = base64.b64encode(image_bytes).decode("ascii")
     media_type = _image_media_type(image_bytes)
-    if status["provider"] == "anthropic":
+    if status["provider"] == "gemini":
+        api_key = _runtime_secret("GEMINI_API_KEY", "GOOGLE_API_KEY")
+        payload = {"contents": [{"parts": [
+            {"text": prompt},
+            {"inline_data": {"mime_type": media_type, "data": encoded}},
+        ]}], "generationConfig": {"temperature": 0, "maxOutputTokens": max_tokens}}
+        response = requests.post(
+            f"{status['base'].rstrip('/')}/models/{status['model']}:generateContent",
+            params={"key": api_key},
+            headers={"Content-Type": "application/json"},
+            json=payload, timeout=60,
+        )
+        response.raise_for_status()
+        parts = response.json()["candidates"][0]["content"].get("parts", [])
+        text = "\n".join(part.get("text", "") for part in parts if part.get("text")).strip()
+    elif status["provider"] == "anthropic":
         api_key = _runtime_secret("ANTHROPIC_API_KEY", "CLAUDE_API_KEY")
         payload = {"model": status["model"], "max_tokens": max_tokens, "temperature": 0,
                    "messages": [{"role": "user", "content": [
@@ -763,7 +789,7 @@ def extract_product_details_from_image(image_bytes, filename="", manual_hint="")
         return empty, False, "لم تصل صورة للتحليل."
     status = vision_status()
     if not status["configured"]:
-        return empty, False, "أضف مفتاح المزود المختار في Streamlit Secrets: OPENAI_API_KEY أو ANTHROPIC_API_KEY."
+        return empty, False, "أضف مفتاحًا في Streamlit Secrets: GEMINI_API_KEY المجاني أو OPENAI_API_KEY."
     try:
         prompt = """أنت مساعد إدخال كتالوج لمتجر مصري. اقرأ صورة المنتج واستخرج البيانات الظاهرة فقط، ولا تخترع مواصفات غير مقروءة.
 أعد JSON صالحًا فقط بدون Markdown أو شرح، بالمفاتيح التالية حرفيًا:
