@@ -91,6 +91,17 @@ def _catalog_row_id(row, index):
     return str(row.get("id") or row.get("image_path") or f"row-{index}")
 
 
+def _image_fingerprint(path):
+    try:
+        digest = hashlib.sha1()
+        with open(path, "rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+    except (OSError, TypeError):
+        return ""
+
+
 def _clean_product_name(value):
     name = os.path.splitext(os.path.basename(str(value or "")))[0]
     name = re.sub(r"[_\-]+", " ", name)
@@ -116,6 +127,10 @@ def _persist_catalog(rows):
 def render_catalog_panel(processed_images=None):
     st.markdown("## 🗂️ كتالوج المنتجات")
     st.caption("كل منتج له صف مستقل. اكتب البيانات واضغط حفظ الصف، وسيُحفظ فورًا.")
+    if st.button("📚 تحميل آخر نسخة من الكتالوج", key="catalog_reload_from_file"):
+        st.session_state.catalog_rows = config.load_catalog()
+        st.success("تم تحميل آخر نسخة محفوظة من الكتالوج.")
+        st.rerun()
     categories = _catalog_categories()
     with st.sidebar.expander("➕ إضافة تصنيف جديد", expanded=False):
         new_category = st.text_input("اسم التصنيف", key="catalog_new_category")
@@ -141,13 +156,20 @@ def render_catalog_panel(processed_images=None):
     if "catalog_rows" not in st.session_state:
         st.session_state.catalog_rows = config.load_catalog()
     rows = st.session_state.catalog_rows
+    migrated_fingerprints = False
     for index, row in enumerate(rows):
         row.setdefault("id", _catalog_row_id(row, index))
+        if not row.get("image_fingerprint") and row.get("image_path") and os.path.exists(row["image_path"]):
+            row["image_fingerprint"] = _image_fingerprint(row["image_path"])
+            migrated_fingerprints = True
+    if migrated_fingerprints:
+        _persist_catalog(rows)
     if processed_images:
-        existing_paths = {str(row.get("image_path")) for row in rows}
+        existing_fingerprints = {str(row.get("image_fingerprint")) for row in rows if row.get("image_fingerprint")}
         changed = False
         for image_path in processed_images:
-            if str(image_path) in existing_paths:
+            fingerprint = _image_fingerprint(str(image_path))
+            if fingerprint and fingerprint in existing_fingerprints:
                 continue
             suffix = os.path.splitext(str(image_path))[1] or ".jpg"
             durable_path = os.path.join(config.CATALOG_IMAGES_DIR, f"product_{uuid.uuid4().hex[:10]}{suffix}")
@@ -155,8 +177,9 @@ def render_catalog_panel(processed_images=None):
                 shutil.copyfile(str(image_path), durable_path)
             except OSError:
                 durable_path = str(image_path)
-            rows.append({"id": uuid.uuid4().hex, "approved": False, "image_path": durable_path, "name": _clean_product_name(durable_path), "type": categories[0], "case_price": 0.0, "pack_count": 1, "unit_price": 0.0, "notes": ""})
-            existing_paths.add(str(image_path))
+            rows.append({"id": uuid.uuid4().hex, "approved": False, "image_path": durable_path, "image_fingerprint": fingerprint, "name": _clean_product_name(durable_path), "type": categories[0], "case_price": 0.0, "pack_count": 1, "unit_price": 0.0, "notes": ""})
+            if fingerprint:
+                existing_fingerprints.add(fingerprint)
             changed = True
         if changed:
             _persist_catalog(rows)
@@ -217,7 +240,7 @@ def render_catalog_panel(processed_images=None):
                 image_path = os.path.join(config.CATALOG_IMAGES_DIR, f"product_{uuid.uuid4().hex[:10]}{suffix}")
                 with open(image_path, "wb") as stream:
                     stream.write(manual_image.getvalue())
-                rows.append({"id": uuid.uuid4().hex, "approved": bool(manual_approved), "image_path": image_path, "name": manual_name.strip(), "type": manual_type, "case_price": float(manual_case), "pack_count": int(manual_count), "unit_price": round(float(manual_case) / max(1, int(manual_count)), 2), "notes": manual_notes.strip()})
+                rows.append({"id": uuid.uuid4().hex, "approved": bool(manual_approved), "image_path": image_path, "image_fingerprint": _image_fingerprint(image_path), "name": manual_name.strip(), "type": manual_type, "case_price": float(manual_case), "pack_count": int(manual_count), "unit_price": round(float(manual_case) / max(1, int(manual_count)), 2), "notes": manual_notes.strip()})
                 if _persist_catalog(rows):
                     st.success("✅ تم حفظ المنتج فورًا في الكتالوج")
                     st.rerun()
@@ -564,7 +587,20 @@ def render_tab_radar(current_channels):
     with col2:
         max_messages = st.number_input("أقصى عدد رسائل", min_value=1, max_value=500, value=50, step=10, key="radar_max_messages")
     with col3:
-        max_price = st.number_input("أقصى سعر أصلي (0 = بلا حد)", min_value=0, max_value=9999999, value=0, step=50, key="radar_max_price")
+        max_prices_text = st.text_input("حدود السعر الأصلي", value="0", key="radar_max_prices_text", help="اكتب أكثر من حد مفصولًا بفاصلة أو سطر، مثل: 120, 250, 500. المنتج يُقبل إذا كان سعره أقل من أو يساوي أي حد.")
+    max_prices = []
+    for raw_limit in re.split(r"[,،\n]+", max_prices_text):
+        raw_limit = raw_limit.strip()
+        if not raw_limit:
+            continue
+        try:
+            parsed_limit = float(raw_limit)
+            if parsed_limit > 0:
+                max_prices.append(parsed_limit)
+        except ValueError:
+            pass
+    if max_prices_text.strip() not in {"", "0"} and not max_prices:
+        st.warning("اكتب حدود السعر كأرقام مفصولة بفاصلة، مثل: 120, 250, 500")
 
     channels_text = st.text_area("القنوات العامة المراد فحصها", value="\n".join(current_channels), height=90, key="radar_channels_text", help="اكتب username كل قناة في سطر، مع أو بدون @")
     source_rule = st.radio("ابدأ السحب من:", ("آخر الرسائل المتاحة", "من تاريخ", "بعد رسالة تحتوي على نص"), horizontal=True, key="radar_source_rule")
@@ -606,7 +642,7 @@ def render_tab_radar(current_channels):
                         allowed_forwarders = [line.strip() for line in allowed_forwarders_text.splitlines() if line.strip()]
                         batch = utils.fetch_public_channel_messages(channel, date_from=date_from, marker_text=marker_text, max_messages=int(max_messages), allowed_forwarders=allowed_forwarders, exclude_forwarded=exclude_forwarded)
                         for item in batch:
-                            if max_price and item.get('auto_price', 0) > max_price:
+                            if max_prices and not any(float(item.get('auto_price') or 0) <= limit for limit in max_prices):
                                 continue
                             found.append(utils.build_catalog_product(item, profit_percent, rounding))
                     # Remove duplicates while preserving source order.
