@@ -195,6 +195,8 @@ def main():
     settings = render_sidebar()
     st.markdown("<style>.main{background-color:#0e1117}.web-banner{background:linear-gradient(135deg,#111115 0%,#ff4b4b 100%);padding:35px;border-radius:15px;text-align:center;margin-bottom:25px}.banner-title{font-size:2rem;font-weight:800;color:#fff}.banner-subtitle{font-size:1.1rem;color:#ffe5e5;margin-top:8px}</style>", unsafe_allow_html=True)
     st.markdown(f'<div class="web-banner"><div class="banner-title">Mr:- Bo0</div><div class="banner-subtitle">{config.BRAND_NAME_AR} (Clean App Edition)</div></div>', unsafe_allow_html=True)
+    if config.OFFLINE_MODE:
+        st.info("🖥️ وضع التشغيل المحلي Offline: المونتاج، القص، الكتالوج، PDF والإعدادات تعمل بدون إنترنت. ميزات Gemini وتيليجرام وسحب الفيديو تحتاج إنترنت عند استخدامها.")
 
     tab1, tab2, tab3, tab4, tab5 = st.tabs(["🎬 الفيديو", "🖼️ الصور والمنتجات", "🛍️ اختارها واطلبها", "🛰️ رادار القنوات", "🔥 الاتجاهات"])
     with tab1:
