@@ -28,7 +28,8 @@ def extract_product_from_image(file_bytes, left, top, right, bottom):
         rgba = cv2.cvtColor(image, cv2.COLOR_BGR2BGRA)
         rgba[:, :, 3] = foreground
         cropped = rgba[top:bottom, left:right]
-        ok, encoded = cv2.imencode(".png", cropped)
+        # PNG is lossless; compression level changes file size, not pixels.
+        ok, encoded = cv2.imencode(".png", cropped, [cv2.IMWRITE_PNG_COMPRESSION, 1])
         return encoded.tobytes() if ok else None
     except Exception:
         return None
