@@ -223,7 +223,7 @@ def render_catalog_panel(processed_images=None):
             manual_name = st.text_input("اسم المنتج", key="catalog_manual_name")
             manual_type = st.selectbox("النوع", categories, key="catalog_manual_type")
             manual_case = st.number_input("سعر الدستة", min_value=0.0, step=1.0, key="catalog_manual_case")
-            manual_count = st.number_input("عدد العبوة", min_value=1, value=1, step=1, key="catalog_manual_count")
+            manual_count = st.number_input("عدد العبوة", min_value=1, step=1, key="catalog_manual_count")
             st.caption(f"سعر القطعة المحسوب: {manual_case / max(1, manual_count):.2f} جنيه")
             manual_notes = st.text_area("الملاحظات / المقاسات / الألوان / الخامة", key="catalog_manual_notes")
             manual_approved = st.checkbox("اعتماد المنتج للمتجر", key="catalog_manual_approved")
@@ -304,6 +304,11 @@ def render_catalog_panel(processed_images=None):
     writer.writeheader()
     writer.writerows(approved_rows)
     st.download_button("⬇️ تنزيل الكتالوج المعتمد CSV", data=csv_buffer.getvalue().encode("utf-8-sig"), file_name="product_catalog.csv", mime="text/csv", key="catalog_csv_download")
+    pdf_col1, pdf_col2 = st.columns(2)
+    with pdf_col1:
+        st.download_button("📄 تنزيل الكتالوج كامل PDF", data=utils.build_catalog_pdf(rows, "كتالوج المنتجات"), file_name="product_catalog.pdf", mime="application/pdf", key="catalog_pdf_download")
+    with pdf_col2:
+        st.download_button("📄 تنزيل المعتمد فقط PDF", data=utils.build_catalog_pdf(approved_rows, "كتالوج المنتجات المعتمدة"), file_name="approved_product_catalog.pdf", mime="application/pdf", key="approved_catalog_pdf_download")
 
 def render_tab_images(blur_bg_opt, blur_intensity_val, logo_opacity, fit_auto_logo, logo_custom_w, logo_custom_h, brand_text_scale, brand_color, brand_position_choice, brand_offset_x, brand_offset_y, extra_brand_suffix, extra_text_scale, extra_color, extra_position_choice, extra_offset_x, extra_offset_y, chosen_size, enhance_quality_opt, sharpness_slider_val, quality_slider_val, logo_position_choice, logo_offset_x, logo_offset_y, color_preset, enable_crop_opt, crop_l, crop_t, crop_r, crop_b, total_target_video_duration, image_duration_per_slide, audio_mode, uploaded_custom_audio, font_choice, remove_logo_bg=True, smart_logo_position=False):
     st.subheader("🖼️ مصنع تجميل صور المنتجات وفيديوهات السلايد شو الذكية")

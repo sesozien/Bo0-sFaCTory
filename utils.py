@@ -314,6 +314,68 @@ def create_image_collage(image_paths, target_size=(1080, 1080), output_name='mon
     collage_img.save(out_collage_path, "JPEG", quality=95)
     return out_collage_path
 
+
+def build_catalog_pdf(rows, title="كتالوج المنتجات"):
+    """Build a shareable Arabic PDF catalog from the current local catalog."""
+    import io
+    from textwrap import wrap
+
+    valid_rows = [row for row in rows if row.get("name")]
+    page_size = (1240, 1754)
+    margin = 55
+    pages = []
+    cairo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Cairo", "static", "Cairo-Bold.ttf")
+    title_font = ImageFont.truetype(cairo_path, 48) if os.path.exists(cairo_path) else ImageFont.load_default()
+    heading_font = ImageFont.truetype(cairo_path, 30) if os.path.exists(cairo_path) else ImageFont.load_default()
+    body_font = ImageFont.truetype(cairo_path, 23) if os.path.exists(cairo_path) else ImageFont.load_default()
+
+    def rtl(text):
+        shaped = arabic_reshaper.reshape(str(text or ""))
+        return get_display(shaped)
+
+    def draw_rtl(draw, xy, text, font, fill=(25, 25, 35)):
+        draw.text(xy, rtl(text), font=font, fill=fill, anchor="ra")
+
+    def card(page, draw, row, x, y, card_w, card_h):
+        draw.rounded_rectangle((x, y, x + card_w, y + card_h), radius=22, fill=(248, 249, 252), outline=(220, 224, 232), width=3)
+        image_path = row.get("image_path")
+        if image_path and os.path.exists(str(image_path)):
+            try:
+                with Image.open(image_path) as source:
+                    product_image = ImageOps.contain(source.convert("RGB"), (card_w - 40, 390))
+                image_x = x + (card_w - product_image.width) // 2
+                page.paste(product_image, (image_x, y + 20))
+            except (OSError, ValueError):
+                pass
+        text_x = x + card_w - 24
+        draw_rtl(draw, (text_x, y + 445), row.get("name", "منتج"), heading_font)
+        price = float(row.get("unit_price") or 0)
+        draw_rtl(draw, (text_x, y + 492), f"السعر: {price:g} جنيه", body_font, (190, 45, 45))
+        category = row.get("type") or "أخرى"
+        draw_rtl(draw, (text_x, y + 532), f"القسم: {category}", body_font)
+        notes = str(row.get("notes") or "").strip()
+        lines = []
+        for paragraph in notes.splitlines() or ["منتج مميز"]:
+            lines.extend(wrap(paragraph, width=35)[:3])
+        for line_index, line in enumerate(lines[:3]):
+            draw_rtl(draw, (text_x, y + 575 + line_index * 32), line, body_font, (70, 72, 80))
+
+    if not valid_rows:
+        valid_rows = [{"name": "لا توجد منتجات محفوظة", "notes": "أضف المنتجات إلى الكتالوج أولًا."}]
+    for start in range(0, len(valid_rows), 4):
+        page = Image.new("RGB", page_size, (255, 255, 255))
+        draw = ImageDraw.Draw(page)
+        draw_rtl(draw, (page_size[0] - margin, 85), title, title_font, (210, 52, 52))
+        draw.line((margin, 115, page_size[0] - margin, 115), fill=(235, 80, 80), width=4)
+        card_w, card_h = 550, 720
+        positions = [(margin, 160), (page_size[0] - margin - card_w, 160), (margin, 930), (page_size[0] - margin - card_w, 930)]
+        for offset, row in enumerate(valid_rows[start:start + 4]):
+            card(page, draw, row, *positions[offset], card_w, card_h)
+        pages.append(page)
+    output = io.BytesIO()
+    pages[0].save(output, format="PDF", save_all=True, append_images=pages[1:], resolution=150.0)
+    return output.getvalue()
+
 def extract_original_price_only(text, max_limit=None):
     clean_text = re.sub(r'01[0125]\d{8}', '', text)
     clean_text = re.sub(r'\d+\s*(?:شارع|طريق|ميدان|دور|شقة|مكرر)', '', clean_text)

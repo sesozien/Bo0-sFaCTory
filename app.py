@@ -76,16 +76,17 @@ def initialize_files():
 
 
 def initialize_state():
-    saved = config.load_settings()
-    for key, default in DEFAULT_WIDGETS.items():
-        if key not in st.session_state:
+    # Load persisted values once per browser session. Reassigning widget keys on
+    # every rerun can make a checkbox appear stuck after the first click.
+    if not st.session_state.get("_settings_initialized", False):
+        saved = config.load_settings()
+        for key, default in DEFAULT_WIDGETS.items():
             value = saved.get(key, default)
             if isinstance(default, bool):
                 st.session_state[key] = _normalize_bool(value, default)
             else:
                 st.session_state[key] = value if value is not None else default
-        elif isinstance(default, bool):
-            st.session_state[key] = _normalize_bool(st.session_state[key], default)
+        st.session_state._settings_initialized = True
     if "cached_posts" not in st.session_state:
         st.session_state.cached_posts = []
     if "product_price_index" not in st.session_state:
