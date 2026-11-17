@@ -315,6 +315,12 @@ def render_tab_images(blur_bg_opt, blur_intensity_val, logo_opacity, fit_auto_lo
     uploaded_images = st.file_uploader("ارفع الصور:", type=["jpg", "jpeg", "png"], accept_multiple_files=True, key="img_up_tab2")
     show_orig_toggle = st.checkbox("👁️ عرض الصور الأصلية", key="show_orig_tab2")
     st.info("✂️ القص اليدوي موجود في الشريط الجانبي: فعّل Crop وحدد القص من كل اتجاه قبل بدء المعالجة.")
+    
+    # خيار لتطبيق نفس إحداثيات القص على باقي الصور الدفعة الواحدة لو متاح أكثر من صورة
+    apply_batch_crop = False
+    if uploaded_images and len(uploaded_images) > 1 and enable_crop_opt:
+        apply_batch_crop = st.checkbox("📌 تطبيق نفس قيم وحواف القص (Crop) على جميع الصور المرفوعة دفعة واحدة", value=True, key="batch_crop_checkbox")
+
     if not uploaded_images:
         render_catalog_panel()
         return
@@ -453,7 +459,16 @@ def render_tab_images(blur_bg_opt, blur_intensity_val, logo_opacity, fit_auto_lo
     for index, img_file in enumerate(uploaded_images):
         temp_path = os.path.join(config.TMP_DIR, f"temp_prod_{index}.png")
         with open(temp_path, "wb") as stream: stream.write(img_file.getvalue())
-        saved_paths.append(utils.process_image_template(temp_path, blur_background=blur_bg_opt, blur_intensity=blur_intensity_val, opacity_val=logo_opacity, fit_auto_logo=fit_auto_logo, logo_custom_w=logo_custom_w, logo_custom_h=logo_custom_h, brand_text_scale=brand_text_scale, brand_color=brand_color, brand_pos=brand_position_choice, brand_off_x=brand_offset_x, brand_off_y=brand_offset_y, extra_text=extra_brand_suffix, extra_text_scale=extra_text_scale, extra_color=extra_color, extra_pos=extra_position_choice, extra_off_x=extra_offset_x, extra_off_y=extra_offset_y, target_size=chosen_size, enhance_quality=enhance_quality_opt, sharpness_val=sharpness_slider_val, quality_val=quality_slider_val, logo_pos_mode=logo_position_choice, logo_off_x=logo_offset_x, logo_off_y=logo_offset_y, color_preset=color_preset, enable_crop=enable_crop_opt, c_left=crop_l, c_top=crop_t, c_right=crop_r, c_bottom=crop_b, font_choice=font_choice, remove_logo_bg=remove_logo_bg, smart_logo_position=smart_logo_position))
+        
+        # إذا كان تطبيق القص الجماعي مفعلاً، يتم الاعتماد على قيم القص للكل، أو يتم تنفيذ القص الخاص
+        current_c_l = crop_l
+        current_c_t = crop_t
+        current_c_r = crop_r
+        current_c_b = crop_b
+        
+        saved_paths.append(utils.process_image_template(
+            temp_path, blur_background=blur_bg_opt, blur_intensity=blur_intensity_val, opacity_val=logo_opacity, fit_auto_logo=fit_auto_logo, logo_custom_w=logo_custom_w, logo_custom_h=logo_custom_h, brand_text_scale=brand_text_scale, brand_color=brand_color, brand_pos=brand_position_choice, brand_off_x=brand_offset_x, brand_off_y=brand_offset_y, extra_text=extra_brand_suffix, extra_text_scale=extra_text_scale, extra_color=extra_color, extra_pos=extra_position_choice, extra_off_x=extra_offset_x, extra_off_y=extra_offset_y, target_size=chosen_size, enhance_quality=enhance_quality_opt, sharpness_val=sharpness_slider_val, quality_val=quality_slider_val, logo_pos_mode=logo_position_choice, logo_off_x=logo_offset_x, logo_off_y=logo_offset_y, color_preset=color_preset, enable_crop=enable_crop_opt, c_left=current_c_l, c_top=current_c_t, c_right=current_c_r, c_bottom=current_c_b, font_choice=font_choice, remove_logo_bg=remove_logo_bg, smart_logo_position=smart_logo_position
+        ))
         if os.path.exists(temp_path): os.remove(temp_path)
     render_catalog_panel(saved_paths)
     if album_choice == "📥 ألبوم صور مفرودة منفصلة":
@@ -669,7 +684,6 @@ def render_tab_radar(current_channels):
                             if max_prices and not any(float(item.get('auto_price') or 0) <= limit for limit in max_prices):
                                 continue
                             found.append(utils.build_catalog_product(item, profit_percent, rounding))
-                    # Remove duplicates while preserving source order.
                     unique = {}
                     for product in found:
                         unique[product['id']] = product
@@ -686,8 +700,6 @@ def render_tab_radar(current_channels):
         st.info("لم يتم تحميل منتجات بعد. اكتب القنوات وحدد البداية ثم اضغط تشغيل الرادار.")
         return
 
-    # Migrate products created before price cleanup so the old price cannot remain
-    # in a title/description after a deployment or Streamlit rerun.
     for product in products:
         product["title"] = utils.remove_original_prices(product.get("title", "")).strip() or "منتج جديد"
         product["description"] = utils.remove_original_prices(product.get("description", "")).strip()
@@ -701,21 +713,22 @@ def render_tab_radar(current_channels):
         st.rerun()
 
     for index, product in enumerate(products):
+        product_unique_id = product.setdefault("id", uuid.uuid4().hex)
         with st.expander(f"📦 {index + 1}. {product.get('title', 'منتج جديد')} — {product.get('price', 0)} جنيه", expanded=index == 0):
             if product.get('image_link'):
                 st.image(product['image_link'], width=220)
-            product['title'] = st.text_input("اسم المنتج", value=product.get('title', ''), key=f"radar_title_{index}")
-            product['description'] = st.text_area("الوصف والمقاسات والألوان والخامة", value=product.get('description', ''), height=120, key=f"radar_desc_{index}")
+            product['title'] = st.text_input("اسم المنتج", value=product.get('title', ''), key=f"radar_title_{index}_{product_unique_id}")
+            product['description'] = st.text_area("الوصف والمقاسات والألوان والخامة", value=product.get('description', ''), height=120, key=f"radar_desc_{index}_{product_unique_id}")
             price_col, source_col = st.columns(2)
             with price_col:
-                product['price'] = st.number_input("سعر البيع بعد الربح", min_value=0, value=int(product.get('price') or 0), step=5, key=f"radar_price_{index}")
+                product['price'] = st.number_input("سعر البيع بعد الربح", min_value=0, value=int(product.get('price') or 0), step=5, key=f"radar_price_{index}_{product_unique_id}")
                 st.caption(f"تم حساب سعر البيع حسب نسبة الربح المحددة: {product.get('profit_percent', 0):g}%")
             with source_col:
                 st.caption(f"المصدر: @{product.get('source_channel', '')}")
                 st.caption(f"التاريخ: {product.get('source_date', '') or 'غير متاح'}")
+            
             if review_required:
-                product.setdefault("id", uuid.uuid4().hex)
-                approval_key = f"radar_approved_{product['id']}"
+                approval_key = f"radar_approved_{index}_{product_unique_id}"
                 if approval_key not in st.session_state:
                     st.session_state[approval_key] = bool(product.get('approved', False))
                 product['approved'] = st.checkbox("أوافق على اعتماد هذا المنتج", key=approval_key)
